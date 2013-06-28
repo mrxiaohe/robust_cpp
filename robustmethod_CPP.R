@@ -10,8 +10,6 @@ corfun=pbcor,plotit=FALSE,...){
 #  when there is more than one predictor
 #
 #
-
-
 	x<-as.matrix(x)
 	xx<-cbind(x,y)
 	xx<-elimna(xx)
