@@ -168,7 +168,6 @@ double hd_C(NumericVector x, NumericVector q){
 	for(int j=0; j<n; j++){
 		output+=(xcopy(j)*w(j));
 	}
-	//Rprintf("%lf", output);
 	return(output);
 }
 
@@ -251,6 +250,36 @@ RcppExport SEXP pbvar_C(SEXP X, SEXP BETA){
 		return wrap(0.0);
 }
 
+double pbvar_C(NumericVector x, double beta){
+	int n=x.size();
+	double Median=median(x);
+	NumericVector w=ifelse((x-Median)<=0, -(x-Median), (x-Median));
+	double pbvar;
+	std::sort(w.begin(), w.end());
+	double omega=w[floor((1.0-beta)*(n+0.5))-1];
+	if(omega>0.0){
+		double len=0;
+		NumericVector z(n);
+		for(int i=0;i<n;i++){
+			if((x(i)-Median)/omega<= -1.0)
+				z(i)=-1.0;
+			if ((x(i)-Median)/omega>=1.0)
+				z(i)=1.0;
+			if(fabs((x(i)-Median)/omega) < 1.0){
+				z(i)=(x(i)-Median)/omega;
+				len+=1.0;
+			}
+		}
+		double z_sq_sum=0;
+		for(int i=0;i<n;i++){
+			z_sq_sum+=pow(z(i), 2.0);
+		}
+		pbvar=(double)n*pow(omega, 2)*z_sq_sum/pow(len, 2);
+		return pbvar;
+	} else
+		return 0.0;
+}
+
 // [[Rcpp::export]]
 RcppExport SEXP tsp1reg_C(SEXP X, SEXP Y, SEXP hd){
 	NumericVector x(X), y(Y);
@@ -293,9 +322,13 @@ RcppExport SEXP stsregp1_C(SEXP X, SEXP Y){
 	NumericVector v1v2=outer_pos(x_ord, y_ord);
 	int n_s=v1v2.size();	
 	NumericVector allvar(n_s);
+	double temp;
 	for(int i=0; i<n_s;i++){
-		NumericVector temp(pbvar_C(wrap(y-v1v2(i)*x), wrap(0.2)));
-		allvar(i)=temp(0);
+		//NumericVector temp(pbvar_C(wrap(y-v1v2(i)*x), wrap(0.2)));
+		//allvar(i)=temp(0);
+		//temp = pbvar_C(wrap(y-v1v2(i)*x), wrap(0.2))
+		temp = pbvar_C(y-v1v2(i)*x, 0.2);
+		allvar(i) = temp;
 		R_CheckUserInterrupt();
 	}
 	IntegerVector b1_id=order(allvar);
@@ -372,9 +405,10 @@ RcppExport SEXP stsreg_for(SEXP X, SEXP Y, SEXP IT){
 	double alpha=median((Rcpp::as<NumericVector>(wrap(res))));
 //	NumericVector tempold(temp);
 	arma::colvec r(nrows);
+	NumericVector tempcol(nrows);
 	for(int i=0; i<it(0); i++){
 		for(int j=0; j<ncols; j++){
-			NumericVector tempcol=x(_,j);
+			tempcol=x(_,j);
 			r=(Rcpp::as<arma::colvec>(y))
 			  -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
 		      -alpha + temp(j)*(Rcpp::as<arma::colvec>(tempcol));
@@ -411,9 +445,10 @@ RcppExport SEXP tshdreg_for(SEXP X, SEXP Y, SEXP IT, SEXP TOL){
 	double alpha=hd_C((Rcpp::as<NumericVector>(wrap(res))), wrap(0.5));
 	std::vector<double> diff(ncols);
 	arma::colvec r(nrows);
+	NumericVector tempcol(nrows);
 	for(int i=0; i<it(0); i++){
 		for(int j=0; j<ncols; j++){
-			NumericVector tempcol=x(_,j);
+			tempcol=x(_,j);
 			r=(Rcpp::as<arma::colvec>(y))
 			  -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
 		      -alpha + temp(j)*(Rcpp::as<arma::colvec>(tempcol));
@@ -460,9 +495,10 @@ RcppExport SEXP tsreg_for(SEXP X, SEXP Y, SEXP IT, SEXP hd){
 	}
 	std::vector<double> diff(ncols);
 	arma::colvec r(nrows);
+	NumericVector tempcol(nrows);
 	for(int i=0; i<it(0); i++){
 		for(int j=0; j<ncols; j++){
-			NumericVector tempcol=x(_, j);
+			tempcol=x(_, j);
 			r=(Rcpp::as<arma::colvec>(y))
 			  -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
 		      -alpha + temp(j)*(Rcpp::as<arma::colvec>(tempcol));
@@ -537,33 +573,44 @@ RcppExport SEXP fdepthv2_for(SEXP M, SEXP PTS){
 	NumericMatrix mdep(mdep_nr, mdep_nc);
 	NumericVector dis_temp;
 	int ic=0;
+	NumericVector B(m.ncol()), BB(m.ncol()), A(m.ncol()), temp(m.ncol());
+	double bot;
 	for(int iall=0; iall<nrows; iall++){
 		for(int i=0; i<nrows; i++){
 			R_CheckUserInterrupt();
 			if(iall<i){
 				ic+=1;
-				NumericVector B=m(i,_)-m(iall,_);
+				//NumericVector B=m(i,_)-m(iall,_);
 				NumericVector dis;
-				NumericVector BB=B*B;
-				double bot=sum(BB);
+				B=m(i,_)-m(iall,_);
+				BB=B*B;
+				//NumericVector BB=B*B;
+				//double bot=sum(BB);
+				bot=sum(BB);
 				if(bot!=0.0){
 					if(R_IsNA(pts(0,0))){
 						for(int j=0; j<nrows; j++){
-							NumericVector A=m(j,_)-m(iall,_);
-							NumericVector temp=(sum(A*B)*B)/bot;
+							//NumericVector A=m(j,_)-m(iall,_);
+							A=m(j,_)-m(iall,_);
+							//NumericVector temp=(sum(A*B)*B)/bot;
+							temp=(sum(A*B)*B)/bot;
 							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
 							//dis_temp.push_back(sum(temp));
 						}
 					}
 					if(!R_IsNA(pts(0,0))){
 						for(int j=0; j<nrows; j++){
-							NumericVector A=m(j,_)-m(iall,_);
-							NumericVector temp=(sum(A*B)*B)/bot;
+							//NumericVector A=m(j,_)-m(iall,_);
+							A=m(j,_)-m(iall,_);
+							//NumericVector temp=(sum(A*B)*B)/bot;
+							temp=(sum(A*B)*B)/bot;
 							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
 						}
 						for(int j=0; j<pts.nrow(); j++){
-							NumericVector A=pts(j,_)-m(iall,_);
-							NumericVector temp=(sum(A*B)*B)/bot;
+							//NumericVector A=pts(j,_)-m(iall,_);
+							A=pts(j,_)-m(iall,_);
+							//NumericVector temp=(sum(A*B)*B)/bot;
+							temp=(sum(A*B)*B)/bot;
 							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
 						}
 					}
@@ -576,10 +623,8 @@ RcppExport SEXP fdepthv2_for(SEXP M, SEXP PTS){
 						for(int k=0; k<mdep_nr;k++)
 							mdep(k,ic-1)=unidepth_out(k);					
 					} else if(!R_IsNA(pts(0,0))){
-						//Rprintf("%lf ", sum(dis));
 						NumericVector dis_1=subsetVec(dis, 0, nrows-1);
 						NumericVector dis_2=subsetVec(dis, nrows, nrows+pts.nrow()-1);
-						//Rprintf("%d \n", 2*nrows-1);
 						NumericVector unidepth_out=unidepth1(dis_1, dis_2);
 						for(int k=0; k<mdep_nr;k++)
 							mdep(k,ic-1)=unidepth_out(k);					
@@ -645,10 +690,8 @@ RcppExport SEXP fdepthv2_for2(SEXP M, SEXP PTS){
 						for(int k=0; k<mdep_nr;k++)
 							mdep(k,ic-1)=unidepth_out(k);					
 					} else if(!R_IsNA(pts(0,0))){
-						//Rprintf("%lf ", sum(dis));
 						NumericVector dis_1=subsetVec(dis, 0, nrows-1);
 						NumericVector dis_2=subsetVec(dis, nrows, nrows+pts.nrow()-1);
-						//Rprintf("%d \n", 2*nrows-1);
 						NumericVector unidepth_out=unidepth1(dis_1, dis_2);
 						for(int k=0; k<mdep_nr;k++)
 							mdep(k,ic-1)=unidepth_out(k);					
@@ -671,7 +714,6 @@ NumericVector idealf(NumericVector x){
 	std::sort(xcopy.begin(), xcopy.end());
 	double g=n/4.0-j-1+5.0/12.0;
 	int k=n-j-1;
-	//Rprintf("%lf  %d  %d", g, j, k);
 	output(0)=(1.0-g)*xcopy(j)+g*xcopy(j+1);
 	output(1)=(1.0-g)*xcopy(k)+g*xcopy(k-1);
 	return output;
@@ -687,6 +729,176 @@ x=rmul(60, 4)
 rmdzeroG(m, est=skip_C)
 */
 
+
+RcppExport SEXP mahalanobis(SEXP X, SEXP CENTER, SEXP COV){
+	BEGIN_RCPP
+	arma::mat x = Rcpp::as<arma::mat>(X);
+	arma::mat center = Rcpp::as<arma::mat>(CENTER);
+	arma::mat covs = Rcpp::as<arma::mat>(COV);
+	int n = x.n_rows, ngrp = x.n_cols;
+	arma::vec mdis(n);
+	arma::mat x_i=mat(ngrp, 1);
+	arma::mat xt = x.t();
+	arma::mat Y;
+	for (int i=0; i<n; i++){
+		x_i = xt.col(i) - center;
+		Y = arma::solve( covs, x_i );
+		mdis(i) = arma::as_scalar(x_i.t() * Y);
+	}
+	return(wrap(mdis));
+	END_RCPP
+}
+
+NumericVector mahalanobis(NumericMatrix X, NumericMatrix CENTER, NumericMatrix COV){
+	BEGIN_RCPP
+	arma::mat x = Rcpp::as<arma::mat>(X);
+	arma::mat center = Rcpp::as<arma::mat>(CENTER);
+	arma::mat covs = Rcpp::as<arma::mat>(COV);
+	int n = x.n_rows, ngrp = x.n_cols;
+	arma::vec mdis(n);
+	arma::mat x_i=mat(ngrp, 1);
+	arma::mat xt = x.t();
+	arma::mat Y;
+	for (int i=0; i<n; i++){
+		x_i = xt.col(i) - center;
+		Y = arma::solve( covs, x_i );
+		mdis(i) = arma::as_scalar(x_i.t() * Y);
+	}
+	return(wrap(mdis));
+	END_RCPP
+}
+
+ arma::mat mahalanobis(arma::mat x, arma::mat center, arma::mat covs){
+	int n = x.n_rows, ngrp = x.n_cols;
+	arma::vec mdis(n);
+	arma::mat x_i=mat(ngrp, 1);
+	arma::mat xt = x.t();
+	arma::mat Y;
+	for (int i=0; i<n; i++){
+		x_i = xt.col(i) - center;
+		Y = arma::solve( covs, x_i );
+		mdis(i) = arma::as_scalar(x_i.t() * Y);
+	}
+	return(mdis);
+}
+
+
+
+RcppExport SEXP rmba(SEXP X, SEXP Csteps){
+	//Computes the reweighted MBA estimator
+	//Original R code provided by David Olive
+	//int p = X.ncol(), n = X.nrow();
+	arma::mat x = Rcpp::as<arma::mat>(X);
+	IntegerVector csteps(Csteps);
+	int n = x.n_rows, p = x.n_cols;
+	arma::mat covs = arma::cov(x);
+	arma::mat mns = mean(x, 0);
+	arma::vec md2 = vec(n);
+	double medd2 = 0.0;
+	for(int i=0; i<csteps(0); i++){
+		md2 = mahalanobis(x, mns.t(), covs);
+		medd2 = arma::as_scalar(arma::median(md2));
+		mns = arma::mean( x.rows(find(md2 <= medd2 ) ));
+		covs = arma::cov( x.rows(find(md2 <= medd2 ) ));	
+	}
+	arma::mat covb = covs(span::all, span::all);
+	arma::mat mnb = mns(span::all, span::all);
+	double critb = arma::as_scalar(prod(diagvec(chol(covb))));
+	arma::mat covv = eye(p, p);
+	arma::mat med = median(x, 0);
+	md2 = mahalanobis(x, med.t(), covv);
+	medd2 = arma::as_scalar(arma::median(md2));
+	mns = arma::mean( x.rows(find(md2 <= medd2 ) ));
+	covs = arma::cov( x.rows(find(md2 <= medd2 ) ));	
+	for(int i=0; i<csteps(0); i++){
+		md2 = mahalanobis(x, mns.t(), covs);
+		medd2 = arma::as_scalar(arma::median(md2));
+		mns = arma::mean( x.rows(find(md2 <= medd2 ) ));
+		covs = arma::cov( x.rows(find(md2 <= medd2 ) ));	
+	}
+	double crit = arma::as_scalar(prod(diagvec(chol(covs))));
+	if( crit < critb ){
+		critb = crit;
+		covb = covs;
+		mnb = mns;
+	}
+	arma::vec rd2 = mahalanobis(x, mnb.t(), covb);
+	double Const = (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
+	covb = Const * covb;
+	double up = R::qchisq(0.975, (double)p, 1, 0);
+	arma::mat rmnb = arma::mean( x.rows(find(rd2 <= up)) );
+	arma::mat rcovb = arma::cov( x.rows(find(rd2 <= up)) );
+	rd2 = mahalanobis(x, rmnb.t(), rcovb);
+	Const = (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
+	rcovb = Const * rcovb;
+	rd2 = mahalanobis(x, rmnb.t(), rcovb);
+
+	rmnb = arma::mean( x.rows(find(rd2 <= up)) );
+	rcovb = arma::cov( x.rows(find(rd2 <= up)) );
+	rd2 = mahalanobis(x, rmnb.t(), rcovb);	
+	Const = (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
+	rcovb = Const * rcovb;
+	return List::create( _["center"] = rmnb, _["cov"] = rcovb );
+}
+
+
+
+List rmba(NumericMatrix X, IntegerVector csteps){
+	//Computes the reweighted MBA estimator
+	//Original R code provided by David Olive
+	//int p = X.ncol(), n = X.nrow();
+	arma::mat x 	= Rcpp::as<arma::mat>(X);
+	int n 			= x.n_rows, p = x.n_cols;
+	arma::mat covs 	= arma::cov(x);
+	arma::mat mns 	= mean(x, 0);
+	arma::vec md2 	= vec(n);
+	double medd2 	= 0.0;
+	for(int i=0; i<csteps(0); i++){
+		md2 		= mahalanobis(x, mns.t(), covs);
+		medd2 		= arma::as_scalar(arma::median(md2));
+		mns 		= arma::mean( x.rows(find(md2 <= medd2 ) ));
+		covs 		= arma::cov( x.rows(find(md2 <= medd2 ) ));	
+	}
+	arma::mat covb 	= covs(span::all, span::all);
+	arma::mat mnb 	= mns(span::all, span::all);
+	double critb 	= arma::as_scalar(prod(diagvec(chol(covb))));
+	arma::mat covv 	= eye(p, p);
+	arma::mat med 	= median(x, 0);
+	md2 			= mahalanobis(x, med.t(), covv);
+	medd2 			= arma::as_scalar(arma::median(md2));
+	mns 			= arma::mean( x.rows(find(md2 <= medd2 ) ));
+	covs 			= arma::cov( x.rows(find(md2 <= medd2 ) ));	
+	for(int i=0; i<csteps(0); i++){
+		md2 		= mahalanobis(x, mns.t(), covs);
+		medd2 		= arma::as_scalar(arma::median(md2));
+		mns 		= arma::mean( x.rows(find(md2 <= medd2 ) ));
+		covs 		= arma::cov( x.rows(find(md2 <= medd2 ) ));	
+	}
+	double crit = arma::as_scalar(prod(diagvec(chol(covs))));
+	if( crit < critb ){
+		critb 		= crit;
+		covb 		= covs;
+		mnb 		= mns;
+	}
+	arma::vec rd2 	= mahalanobis(x, mnb.t(), covb);
+	double Const 	= (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
+	covb 			= Const * covb;
+	double up 		= R::qchisq(0.975, (double)p, 1, 0);
+	arma::mat rmnb 	= arma::mean( x.rows(find(rd2 <= up)) );
+	arma::mat rcovb = arma::cov( x.rows(find(rd2 <= up)) );
+	rd2 			= mahalanobis(x, rmnb.t(), rcovb);
+	Const 			= (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
+	rcovb 			= Const * rcovb;
+	rd2 			= mahalanobis(x, rmnb.t(), rcovb);
+	rmnb 			= arma::mean( x.rows(find(rd2 <= up)) );
+	rcovb 			= arma::cov( x.rows(find(rd2 <= up)) );
+	rd2 			= mahalanobis(x, rmnb.t(), rcovb);	
+	Const 			= (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
+	rcovb 			= Const * rcovb;
+	return List::create( _["center"] = rmnb, _["cov"] = rcovb );
+}
+
+
 RcppExport SEXP outpro_for(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM){
 	NumericMatrix m(M);
 	int nrows=m.nrow();
@@ -694,471 +906,747 @@ RcppExport SEXP outpro_for(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM){
 	LogicalVector mm(MM);
 	NumericVector outid; 
 	LogicalVector flag(nrows, false);
+	NumericVector B(m.ncol()), A(m.ncol()), temp(m.ncol()), BB(m.ncol()), temp_idealf(2);
 
 	for(int i=0; i<nrows; i++){
-		NumericVector B=m(i,_)-center, BB=B*B, dis(nrows);
+		R_CheckUserInterrupt();
+		B=m(i,_)-center;
+		BB = B*B;
+		NumericVector dis(nrows);
 		double bot=sum(BB); 
+		R_CheckUserInterrupt();
 		if(bot!=0){
 			for(int j=0;j<nrows;j++){
-				NumericVector A=m(j,_)-center, temp=sum(A*B)*B/bot;
+				A=m(j,_)-center;
+				temp=sum(A*B)*B/bot;
 				dis(j)=pow(sum(temp*temp), 0.5);
 			}
-			NumericVector temp=idealf(dis);
+			temp_idealf=idealf(dis);
 			double cu;
 			if(!mm(0))
-				cu=median(dis)+gval(0)*(temp(1)-temp(0));
+				cu=median(dis)+gval(0)*(temp_idealf(1)-temp_idealf(0));
 			else if(mm(0))
 				cu=median(dis)+gval(0)*mad(dis);
-			//Rprintf("%lf\n", sum(dis));
 			for(int k=0; k<nrows; k++){
 				if(dis(k)>cu)
 					flag(k)=true;
 			}
 		}
 	}
-	return flag;
+	return(wrap(flag));
+}
+
+
+
+double depths1( double m, double j ){
+	double dep;
+	if( m < j ){
+		dep = 0.0;
+	} else if( j == 1.0 ){
+		dep = m;
+	} else if( j == 2.0 ){
+		dep = m*(m - 1)/2.0;
+	} else if( j == 3.0 ){
+		dep = m*(m - 1)*(m - 2)/6.0;
+	}
+	return dep;
+}
+/*
+RcppExport SEXP depth(double u, double v, NumericMatrix m){
+	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
+	int n = m.nrow(), 
+	return(wrap(p));
+}
+*/
+RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
+	NumericMatrix m(M); 
+	NumericVector UU(U), VV(V), alpha;
+	IntegerVector fv;
+	double u = UU(0), v = VV(0);
+	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
+	double p2 = p*2.0, eps = 0.000001;
+	int n = m.nrow(), nt = 0;
+	for( int i=0; i < n; i++ ){
+		double dv = ( m(i, 0) - u )*( m(i, 0) - u ) + ( m(i, 1) - v )*( m(i, 1) - v );
+		dv = pow(dv, 0.5);
+		if( dv <= eps ){
+			nt += 1;
+		}else{
+			double xu = (m(i, 0) - u)/dv, yu = (m(i, 1) - v)/dv;
+			if( fabs(xu) > fabs(yu) ){
+				if( m(i,0) >= u ){
+					alpha.push_back( asin(yu) );
+					if( alpha( alpha.size()-1 ) < 0.0 ){
+						alpha( alpha.size()-1 ) += p2;
+					} 
+				}else {
+					alpha.push_back( p - asin( yu ) );
+				}
+			} else {
+				if( m(i, 1) >= v ){
+					alpha.push_back( acos(xu) );
+				} else {
+					alpha.push_back( p2 - acos(xu) );
+				}
+			}
+			if( alpha( alpha.size()-1 ) >= (p2 - eps) ){
+				alpha( alpha.size()-1 ) = 0.0;
+			}
+		}
+	}
+	int nn = n - nt;
+	if( nn <= 1 ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return(wrap( numh/n ));
+	}
+	std::sort( alpha.begin(), alpha.end() );
+	double angle = alpha(0) - alpha( alpha.size()-1 ) + p2;
+	for( int i=1; i<nn; i++ ){
+		double dif = (alpha(i) - alpha(i-1));  
+		if( angle < dif )
+			angle = dif;
+	}
+	if( angle > (p + eps) ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return(wrap( numh/n ));
+	}
+	angle = alpha(0);
+	int nu = 0;
+	for( int i=0; i<nn; i++ ){
+		alpha(i) = alpha(i) - angle;
+		if( alpha(i) < (p - eps) ){
+			nu += 1;
+		}
+	}
+	if( nu >= nn ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		//if( n >=3 ){
+		//	sdep = nums/depths1( double(n), 3.0 );
+		//}
+		numh += nt;
+		return(wrap( numh/n ));
+	}
+
+//  Mergesort the alpha with their antipodal angles beta and at the same time update I, F(I), and NBAD.
+	int ja = 1, jb = 1, nn2 = nn*2, nbad = 0, I = nu, nf = nn;
+	double alphk = alpha(0), betak = alpha(nu) - p;
+	IntegerVector fv_id;
+	for( int i=0; i<nn2; i++ ){
+		double add = alphk + eps;
+		if ( add < betak ){
+			nf += 1;
+			if( ja < nn ){
+				ja += 1;
+				alphk = alpha(ja - 1);
+			} else {
+				alphk = p2 + 1.0;
+			}
+		} else {
+			I += 1;
+			int nn1 = nn + 1;
+			if( I == nn1 ){
+				I = 1;
+				nf = nf - nn;
+			}
+			fv.push_back(nf);
+			fv_id.push_back(I-1);
+			int nfi = nf - I;
+			nbad += (int)depths1( (double)nfi, 2.0 );
+			if( jb < nn ){
+				jb += 1;
+				if( (jb + nu) <= nn ){
+					betak = alpha( jb + nu - 1 ) - p;
+				} else {
+					betak = alpha( jb + nu - nn - 1 ) + p;
+				}
+			} else {
+				betak = p2 + 1.0;
+			}
+		}
+	}
+	// Computation of numh for halfspace depth.
+	int gi = 0;
+	ja = 1;
+	arma::vec fv2( fv.size() );
+	for( int i=0; i < fv.size(); i++ ){
+		fv2( fv_id(i) ) = fv(i);
+	}
+	arma::uvec fv_id2 = sort_index( Rcpp::as<arma::vec>(fv_id) );
+	angle = alpha(0);
+	int dif = nn - fv2(0);
+	NumericVector numh_temp(2);
+	numh_temp(0) = fv2(0)*1.0;
+	numh_temp(1) = dif*1.0;
+	numh = min(numh_temp);
+	for( int i=1; i < nn; i++ ){
+		double aeps = angle + eps;
+		if( alpha(i) <= aeps ){
+			ja += 1;
+		} else {
+			gi += ja;
+			ja = 1;
+			angle = alpha(i);
+		}
+		int ki = fv2(i) - gi;
+		int nnki = nn - ki;
+		if( ki >= nnki ){
+			ki = nnki;
+		}
+		if( numh >= ki )
+			numh = ki;
+	}
+	nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+			depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+			depths1( (double)nt, 3 );
+	numh = numh + nt;
+	return( wrap(numh/n) );
+}
+
+
+double depth(double u, double v, NumericMatrix m){
+	NumericVector alpha;
+	IntegerVector fv;
+	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
+	double p2 = p*2.0, eps = 0.000001;
+	int n = m.nrow(), nt = 0;
+	double xu, yu;
+	for( int i=0; i < n; i++ ){
+		double dv = ( m(i, 0) - u )*( m(i, 0) - u ) + ( m(i, 1) - v )*( m(i, 1) - v );
+		dv = pow(dv, 0.5);
+		if( dv <= eps ){
+			nt += 1;
+		}else{
+			xu = (m(i, 0) - u)/dv;
+			yu = (m(i, 1) - v)/dv;
+			if( fabs(xu) > fabs(yu) ){
+				if( m(i,0) >= u ){
+					alpha.push_back( asin(yu) );
+					if( alpha( alpha.size()-1 ) < 0.0 ){
+						alpha( alpha.size()-1 ) += p2;
+					} 
+				}else {
+					alpha.push_back( p - asin( yu ) );
+				}
+			} else {
+				if( m(i, 1) >= v ){
+					alpha.push_back( acos(xu) );
+				} else {
+					alpha.push_back( p2 - acos(xu) );
+				}
+			}
+			if( alpha( alpha.size()-1 ) >= (p2 - eps) ){
+				alpha( alpha.size()-1 ) = 0.0;
+			}
+		}
+	}
+	int nn = n - nt;
+	if( nn <= 1 ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return( numh/n );
+	}
+	std::sort( alpha.begin(), alpha.end() );
+	double angle = alpha(0) - alpha( alpha.size()-1 ) + p2;
+	for( int i=1; i<nn; i++ ){
+		double dif = (alpha(i) - alpha(i-1));  
+		if( angle < dif )
+			angle = dif;
+	}
+	if( angle > (p + eps) ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return( numh/n );
+	}
+	angle = alpha(0);
+	int nu = 0;
+	for( int i=0; i<nn; i++ ){
+		alpha(i) = alpha(i) - angle;
+		if( alpha(i) < (p - eps) ){
+			nu += 1;
+		}
+	}
+	if( nu >= nn ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return( numh/n );
+	}
+//  Mergesort the alpha with their antipodal angles beta and at the same time update I, F(I), and NBAD.
+	int ja = 1, jb = 1, nn2 = nn*2, nbad = 0, I = nu, nf = nn;
+	double alphk = alpha(0), betak = alpha(nu) - p, add;
+	IntegerVector fv_id;
+	for( int i=0; i<nn2; i++ ){
+		add = alphk + eps;
+		if ( add < betak ){
+			nf += 1;
+			if( ja < nn ){
+				ja += 1;
+				alphk = alpha(ja - 1);
+			} else {
+				alphk = p2 + 1.0;
+			}
+		} else {
+			I += 1;
+			int nn1 = nn + 1;
+			if( I == nn1 ){
+				I = 1;
+				nf = nf - nn;
+			}
+			fv.push_back(nf);
+			fv_id.push_back(I-1);
+			int nfi = nf - I;
+			nbad += (int)depths1( (double)nfi, 2.0 );
+			if( jb < nn ){
+				jb += 1;
+				if( (jb + nu) <= nn ){
+					betak = alpha( jb + nu - 1 ) - p;
+				} else {
+					betak = alpha( jb + nu - nn - 1 ) + p;
+				}
+			} else {
+				betak = p2 + 1.0;
+			}
+		}
+	}
+	// Computation of numh for halfspace depth.
+	int gi = 0;
+	ja = 1;
+	arma::vec fv2( fv.size() );
+	for( int i=0; i < fv.size(); i++ ){
+		fv2( fv_id(i) ) = fv(i);
+	}
+	arma::uvec fv_id2 = sort_index( Rcpp::as<arma::vec>(fv_id) );
+	angle = alpha(0);
+	int dif = nn - fv2(0);
+	NumericVector numh_temp(2);
+	numh_temp(0) = fv2(0)*1.0;
+	numh_temp(1) = dif*1.0;
+	numh = min(numh_temp);
+	for( int i=1; i < nn; i++ ){
+		double aeps = angle + eps;
+		if( alpha(i) <= aeps ){
+			ja += 1;
+		} else {
+			gi += ja;
+			ja = 1;
+			angle = alpha(i);
+		}
+		int ki = fv2(i) - gi;
+		int nnki = nn - ki;
+		if( ki >= nnki ){
+			ki = nnki;
+		}
+		if( numh >= ki )
+			numh = ki;
+	}
+	nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+			depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+			depths1( (double)nt, 3 );
+	numh = numh + nt;
+	return( numh/n );
+}
+
+
+double depth2(double u, double v, NumericMatrix m){
+	IntegerVector fv;
+	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
+	double p2 = p*2.0, eps = 0.000001;
+	int n = m.nrow(), nt = 0;
+	NumericVector alpha(n);
+	for( int i=0; i < n; i++ ){
+		double dv = ( m(i, 0) - u )*( m(i, 0) - u ) + ( m(i, 1) - v )*( m(i, 1) - v );
+		dv = pow(dv, 0.5);
+		if( dv <= eps ){
+			nt += 1;
+		}else{
+			double xu = (m(i, 0) - u)/dv, yu = (m(i, 1) - v)/dv;
+			if( fabs(xu) > fabs(yu) ){
+				if( m(i,0) >= u ){
+					alpha.push_back( asin(yu) );
+					if( alpha( alpha.size()-1 ) < 0.0 ){
+						alpha( alpha.size()-1 ) += p2;
+					} 
+				}else {
+					alpha.push_back( p - asin( yu ) );
+				}
+			} else {
+				if( m(i, 1) >= v ){
+					alpha.push_back( acos(xu) );
+				} else {
+					alpha.push_back( p2 - acos(xu) );
+				}
+			}
+			if( alpha( alpha.size()-1 ) >= (p2 - eps) ){
+				alpha( alpha.size()-1 ) = 0.0;
+			}
+		}
+	}
+	int nn = n - nt;
+	if( nn <= 1 ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return( numh/n );
+	}
+	std::sort( alpha.begin(), alpha.end() );
+	double angle = alpha(0) - alpha( alpha.size()-1 ) + p2;
+	for( int i=1; i<nn; i++ ){
+		double dif = (alpha(i) - alpha(i-1));  
+		if( angle < dif )
+			angle = dif;
+	}
+	if( angle > (p + eps) ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return( numh/n );
+	}
+	angle = alpha(0);
+	int nu = 0;
+	for( int i=0; i<nn; i++ ){
+		alpha(i) = alpha(i) - angle;
+		if( alpha(i) < (p - eps) ){
+			nu += 1;
+		}
+	}
+	if( nu >= nn ){
+		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+				depths1( (double)nt, 3 );
+		numh += nt;
+		return( numh/n );
+	}
+//  Mergesort the alpha with their antipodal angles beta and at the same time update I, F(I), and NBAD.
+	int ja = 1, jb = 1, nn2 = nn*2, nbad = 0, I = nu, nf = nn;
+	double alphk = alpha(0), betak = alpha(nu) - p;
+	IntegerVector fv_id;
+	for( int i=0; i<nn2; i++ ){
+		double add = alphk + eps;
+		if ( add < betak ){
+			nf += 1;
+			if( ja < nn ){
+				ja += 1;
+				alphk = alpha(ja - 1);
+			} else {
+				alphk = p2 + 1.0;
+			}
+		} else {
+			I += 1;
+			int nn1 = nn + 1;
+			if( I == nn1 ){
+				I = 1;
+				nf = nf - nn;
+			}
+			fv.push_back(nf);
+			fv_id.push_back(I-1);
+			int nfi = nf - I;
+			nbad += (int)depths1( (double)nfi, 2.0 );
+			if( jb < nn ){
+				jb += 1;
+				if( (jb + nu) <= nn ){
+					betak = alpha( jb + nu - 1 ) - p;
+				} else {
+					betak = alpha( jb + nu - nn - 1 ) + p;
+				}
+			} else {
+				betak = p2 + 1.0;
+			}
+		}
+	}
+	// Computation of numh for halfspace depth.
+	int gi = 0;
+	ja = 1;
+	arma::vec fv2( fv.size() );
+	for( int i=0; i < fv.size(); i++ ){
+		fv2( fv_id(i) ) = fv(i);
+	}
+	arma::uvec fv_id2 = sort_index( Rcpp::as<arma::vec>(fv_id) );
+	angle = alpha(0);
+	int dif = nn - fv2(0);
+	NumericVector numh_temp(2);
+	numh_temp(0) = fv2(0)*1.0;
+	numh_temp(1) = dif*1.0;
+	numh = min(numh_temp);
+	for( int i=1; i < nn; i++ ){
+		double aeps = angle + eps;
+		if( alpha(i) <= aeps ){
+			ja += 1;
+		} else {
+			gi += ja;
+			ja = 1;
+			angle = alpha(i);
+		}
+		int ki = fv2(i) - gi;
+		int nnki = nn - ki;
+		if( ki >= nnki ){
+			ki = nnki;
+		}
+		if( numh >= ki )
+			numh = ki;
+	}
+	nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
+			depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
+			depths1( (double)nt, 3 );
+	numh = numh + nt;
+	return( numh/n );
+}
+
+
+
+RcppExport SEXP outpro_C(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM, SEXP COP, SEXP TR, SEXP Q){
+	BEGIN_RCPP
+	arma::mat m = Rcpp::as<arma::mat>(M);
+	NumericVector gval(GVAL), center(CENTER), tr(TR), q(Q);
+	IntegerVector cop(COP);
+	int nv = m.n_rows, nc = m.n_cols;
+	LogicalVector mm(MM), flag(nv, false);  
+
+	IntegerVector outid, keepid; 
+	if(nc == 1){
+		double Med = median( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
+		double Mad = mad ( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
+		NumericVector dis( nv );
+		double crit = pow( R::qchisq( 0.975, 1, 1, 0 ), 0.5 );
+		for( int i = 0; i < nv; i++ ){
+			dis(i) = ( m(i, 0) - Med )*( m(i, 0) - Med )/( Mad*Mad );
+			dis(i) = pow( dis(i), 0.5);
+			if( dis(i) > crit ){
+				outid.push_back(i);
+			} else {
+				keepid.push_back(i);
+			}
+		}
+	}
+	if( nc > 1 ){
+		if( R_IsNA(gval(0)) && cop(0) == 1 )
+			gval(0) = pow( R::qchisq(0.95, (double)nc, 1, 0), 0.5 );
+		if( R_IsNA(gval(0)) && cop(0) != 1 )
+			gval(0) = pow( R::qchisq(0.975, (double)nc, 1, 0), 0.5 );
+		if( cop(0) == 1 && R_IsNA(center(0)) ){
+			if( nc == 2 ){
+				NumericVector tempd( nv );
+				for( int i = 0; i < nv; i++ ){
+					tempd(i) = depth( m(i, 0), m(i, 1), Rcpp::as<Rcpp::NumericMatrix>(wrap(m)) );
+				}
+				double mdep = *std::max_element( tempd.begin(), tempd.end() );
+				arma::uvec flag = find( Rcpp::as<arma::vec>(tempd) == mdep );
+				if( flag.n_elem == 1 ){
+					center = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) )(flag(0), _);
+				} else if( flag.n_elem > 1 ){
+					center = Rcpp::as<Rcpp::NumericVector>( wrap( mean( m.rows(flag) ) ));
+				}
+			}
+		}
+		if( cop(0) == 3 && R_IsNA(center(0)) )
+			center = Rcpp::as<Rcpp::NumericMatrix>(wrap(arma::median( m )))(0,_);
+		if( cop(0) == 6 && R_IsNA(center(0)) ){
+			center = rmba( Rcpp::as<Rcpp::NumericMatrix>(wrap( m )), 5)(0);
+		}
+		NumericMatrix m2 = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) );
+		NumericVector B(nc), A(nc), BB(nc), temp(nc), temp_idealf(2);
+		double bot;
+		for( int i=0; i < nv; i++ ){
+			B = m2(i,_) - center;
+			BB = B*B;
+			NumericVector dis(nv);
+			bot = sum(BB); 
+			if(bot!=0){
+				for( int j=0; j<nv; j++ ){
+					A = m2(j,_) - center;
+					temp = sum( A*B )*B/bot;
+					dis(j)=pow(sum( temp*temp ), 0.5);
+				}
+				temp_idealf=idealf(dis);
+				double cu;
+				if( !mm(0) )
+					cu = median( dis ) + gval( 0 )*( temp_idealf( 1 ) - temp_idealf( 0 ) );
+				else if( mm(0) )
+					cu = median( dis ) + gval( 0 )*mad( dis );
+				for( int k=0; k < nv; k++ ){
+					if( dis(k) > cu )
+						flag(k) = true;
+				}
+			}
+		}		
+		for( int i=0; i < nv; i++ ){
+			if(flag(i))
+				outid.push_back(i);
+			else
+				keepid.push_back(i);
+		}
+	}
+	return List::create(_["outid"] = outid, _["keepid"] = keepid);
+	END_RCPP
+}
+
+
+
+
+IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center, 
+	          			LogicalVector mm, IntegerVector cop, NumericVector tr, NumericVector q){
+	arma::mat m = Rcpp::as<arma::mat>(M);
+	int nv = m.n_rows, nc = m.n_cols;
+	LogicalVector flag(nv, false);  
+	IntegerVector outid, keepid; 
+	if(nc == 1){
+		double Med = median( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
+		double Mad = mad ( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
+		NumericVector dis( nv );
+		double crit = pow( R::qchisq( 0.975, 1, 1, 0 ), 0.5 );
+		for( int i = 0; i < nv; i++ ){
+			dis(i) = ( m(i, 0) - Med )*( m(i, 0) - Med )/( Mad*Mad );
+			dis(i) = pow( dis(i), 0.5);
+			if( dis(i) > crit ){
+				outid.push_back(i);
+			} else {
+				keepid.push_back(i);
+			}
+		}
+	}
+	if( nc > 1 ){
+		if( R_IsNA(gval(0)) && cop(0) == 1 )
+			gval(0) = pow( R::qchisq(0.95, (double)nc, 1, 0), 0.5 );
+		if( R_IsNA(gval(0)) && cop(0) != 1 )
+			gval(0) = pow( R::qchisq(0.975, (double)nc, 1, 0), 0.5 );
+		if( cop(0) == 1 && R_IsNA(center(0)) ){
+			if( nc == 2 ){
+				NumericVector tempd( nv );
+				for( int i = 0; i < nv; i++ ){
+					tempd(i) = depth( m(i, 0), m(i, 1), Rcpp::as<Rcpp::NumericMatrix>(wrap(m)) );
+				}
+				double mdep = *std::max_element( tempd.begin(), tempd.end() );
+				arma::uvec flag = find( Rcpp::as<arma::vec>(tempd) == mdep );
+				if( flag.n_elem == 1 ){
+					center = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) )(flag(0), _);
+				} else if( flag.n_elem > 1 ){
+					center = Rcpp::as<Rcpp::NumericVector>( wrap( mean( m.rows(flag) ) ));
+				}
+			}
+		}
+		if( cop(0) == 3 && R_IsNA(center(0)) ){
+			center = Rcpp::as<Rcpp::NumericMatrix>(wrap(arma::median( m )))(0,_);
+			//Rprintf("\nCENTER: \n\n%lf  %lf   %lf   %lf\n\n", center(0),center(1),center(2),center(3));
+		}
+		if( cop(0) == 6 && R_IsNA(center(0)) ){
+			center = rmba( Rcpp::as<Rcpp::NumericMatrix>(wrap( m )), 
+						   Rcpp::as<Rcpp::IntegerVector>(wrap(5)))(0);
+		}
+		NumericMatrix m2 = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) );
+		NumericVector B(nc), A(nc), BB(nc), temp(nc), temp_idealf(2);
+		double bot;
+		for( int i=0; i < nv; i++ ){
+			B = m2(i,_) - center;
+			BB = B*B;
+			NumericVector dis(nv);
+			bot = sum(BB); 
+			if(bot!=0){
+				for( int j=0; j<nv; j++ ){
+					A = m2(j,_) - center;
+					temp = sum( A*B )*B/bot;
+					dis(j)=pow(sum( temp*temp ), 0.5);
+				}
+				temp_idealf=idealf(dis);
+				double cu;
+				if( !mm(0) )
+					cu = median( dis ) + gval( 0 )*( temp_idealf( 1 ) - temp_idealf( 0 ) );
+				else if( mm(0) )
+					cu = median( dis ) + gval( 0 )*mad( dis );
+				for( int k=0; k < nv; k++ ){
+					if( dis(k) > cu )
+						flag(k) = true;
+				}
+			}
+		}		
+		for( int i=0; i < nv; i++ ){
+			if(!flag(i))
+//				outid.push_back(i);
+//			else
+				keepid.push_back(i);
+		}
+	}
+	//return List::create(_["outid"] = outid, _["keepid"] = keepid);
+	return(wrap(keepid));
+}
+
+
+RcppExport SEXP skip(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP TR, SEXP Q){
+	NumericMatrix m(M);
+	NumericVector gval(1, NA_REAL), center(m.ncol(), NA_REAL);
+	NumericVector tr(TR), q(Q);
+	LogicalVector mm(MM);
+	IntegerVector outpro_cop(OUTPRO_COP);
+	IntegerVector keepid = outpro_C(m, gval, center, mm, outpro_cop, tr, q);
+	//IntegerVector keepid = output(1);
+	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
+	return(wrap(val));
+}
+
+
+NumericVector skip(NumericMatrix m, LogicalVector mm, IntegerVector outpro_cop, NumericVector tr, NumericVector q){
+	NumericVector gval(1, NA_REAL), center(m.ncol(), NA_REAL);
+	IntegerVector keepid = outpro_C(m, gval, center, mm, outpro_cop, tr, q);
+	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
+	return(wrap(val));
+}
+
+NumericVector skip(arma::mat M, LogicalVector mm, IntegerVector outpro_cop, NumericVector tr, NumericVector q){
+	NumericMatrix m = Rcpp::as<Rcpp::NumericMatrix>(wrap(M));
+	NumericVector gval(1, NA_REAL), center(m.ncol(), NA_REAL);
+	IntegerVector keepid = outpro_C(m, gval, center, mm, outpro_cop, tr, q);
+	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
+	return(wrap(val));
+}
+
+RcppExport SEXP skip_boot(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP BOOTID){
+	BEGIN_RCPP
+	arma::mat m = Rcpp::as<arma::mat>(wrap(M));
+	IntegerVector outpro_cop(OUTPRO_COP);
+	List bootid(BOOTID);
+	LogicalVector mm(MM);
+	int n = m.n_rows, nc = m.n_cols, nboot = bootid.size();
+	NumericVector gval(1, NA_REAL), center(nc, NA_REAL), q(1, 0.5), tr(1, 0.2);
+	NumericVector output(nboot*nc), temp(nc) ;
+	arma::uvec tempid=uvec(n);
+	for( int i = 0; i < nboot; i++ ){
+		R_CheckUserInterrupt();
+		tempid = Rcpp::as<arma::uvec>(bootid(i));
+		temp = skip( m.rows(tempid), mm, outpro_cop, tr, q );
+		for( int j = 0; j < nc; j++ ){
+			output(i*nc + j) = temp(j);
+		}
+	}
+	return(wrap(output));
+	END_RCPP
 }
 
 
 /*
 
-IntegerVector outpro_for(NumericMatrix m, NumericVector gval, NumericVector center, 
-				LogicalVector mm){
-	int nrows=m.nrow();
-	IntegerVector outid; 
-	IntegerVector flag(nrows, 0);
-	for(int i=0; i<nrows; i++){
-		NumericVector B=m(i,_)-center, BB=B*B, dis(nrows);
-		double bot=sum(BB); 
-		if(bot!=0){
-			for(int j=0;j<nrows;j++){
-				NumericVector A=m(j,_)-center, temp=sum(A*B)*B/bot;
-				dis(j)=pow(sum(temp*temp), 0.5);
-			}
-			NumericVector temp=idealf(dis);
-			double cu;
-			if(!mm(0))
-				cu=median(dis)+gval(0)*(temp(1)-temp(0));
-			else if(mm(0))
-				cu=median(dis)+gval(0)*mad(dis);
-			//Rprintf("%lf\n", sum(dis));
-			for(int k=0; k<nrows; k++){
-				if(dis(k)>cu)
-					flag(k)=1;
-			}
-		}
-	}
-	if(sum(flag)>0){
-		for(int i=0;i<nrows; i++){
-			if(flag(i)==1)
-				outid.push_back(i+1);
-		}
-	}
-	return outid;
-}
 
-NumericVector outpro_keep(NumericMatrix m, NumericVector gval, NumericVector center, 
-				LogicalVector mm){
-	int nrows=m.nrow();
-	IntegerVector keepid; 
-	NumericVector flag(nrows, 1.0);
-	for(int i=0; i<nrows; i++){
-		NumericVector B=m(i,_)-center, BB=B*B, dis(nrows);
-		double bot=sum(BB); 
-		if(bot!=0){
-			for(int j=0;j<nrows;j++){
-				NumericVector A=m(j,_)-center, temp=sum(A*B)*B/bot;
-				dis(j)=pow(sum(temp*temp), 0.5);
-			}
-			NumericVector temp=idealf(dis);
-			double cu;
-			if(!mm(0))
-				cu=median(dis)+gval(0)*(temp(1)-temp(0));
-			else if(mm(0))
-				cu=median(dis)+gval(0)*mad(dis);
-			//Rprintf("%lf\n", sum(dis));
-			for(int k=0; k<nrows; k++){
-				if(dis(k)>cu)
-					flag(k)=0.0;
-			}
-		}
-	}
-	return flag;
-}
+bootid2 <- list( c(1, 5, 9, 1, 4, 5, 7, 4, 9, 4),
+ 				 c(7, 1, 9, 8, 5, 2, 1, 8, 2, 0))
 
+dyn.load("/Users/xiaohe/Dropbox/github/robust_cpp/robustmethods_CPP.so")
+source("/Users/xiaohe/Dropbox/github/robust_cpp/robustmethods_CPP.R")
+source("/Users/xiaohe/Dropbox/github/robust_cpp/Rallfun-v22.R")
+set.seed(1)
+x=matrix(rnorm(80), 20, 4)
+#bootid = list(sample(0:9, 10, replace=TRUE), sample(0:9, 10, replace=TRUE))
+.Call("skip_boot", x, FALSE, 6, bootid)
 
-
-RcppExport SEXP outpro_loop(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM, SEXP NBOOT, 
-							SEXP N, SEXP NCOL){
-	List mlist(M), centerlist(CENTER);
-	NumericVector gval(GVAL);
-	LogicalVector mm(MM);
-	IntegerVector nboot(NBOOT), n(N), tempncols(NCOL);
-	int temp_ncols=tempncols(0);
-	NumericMatrix colmeans(nboot(0), temp_ncols);
-
-	for(int i=0; i<nboot(0); i++){
-		NumericMatrix tempmat=mlist(i);
-		IntegerVector temp=outpro_keep(tempmat, gval, centerlist(i), mm);
-		int temp_n=temp.size();
-		for(int j=0; j<temp_ncols; j++){
-			NumericVector tempcol(temp_n);
-			for(int k=0; k<temp_n; k++){
-					tempcol(k)=tempmat(temp(k), j);
-			}
-			colmeans(i, j)=sum(tempcol)/temp_n;
-		}
-	}
-	return colmeans;
-}
-
-
-
-RcppExport SEXP outpro_loop2(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM, SEXP NBOOT, 
-							SEXP N, SEXP NCOL){
-	List mlist(M), centerlist(CENTER);
-	NumericVector gval(GVAL);
-	LogicalVector mm(MM);
-	IntegerVector nboot(NBOOT), n(N), tempncols(NCOL);
-	int temp_ncols=tempncols(0);
-	NumericMatrix colmeans(nboot(0), temp_ncols);
-	arma::mat m_sub;
-	for(int i=0; i<nboot(0); i++){
-		NumericMatrix tempmat=mlist(i);
-		NumericVector temp=outpro_keep(tempmat, gval, centerlist(i), mm);
-		m_sub=submatrix(tempmat, temp);
-		//Rprintf("%d %d, ", m_sub.n_cols, m_sub.n_rows);
-		for(int j=0; j<temp_ncols; j++){
-			colmeans(i, j)=arma::mean(m_sub.col(j));
-		}
-	}
-	return colmeans;
-}
-
-
-rmdzeroG_vers2<-function(x,est=skip,grp=NA,nboot=500,SEED=TRUE,...){
-#
-#   Do ANOVA on dependent groups
-#   using #   depth of zero among  bootstrap values
-#   based on difference scores.
-#
-#   The data are assumed to be stored in x in list mode
-#   or in a matrix. In the first case
-#   x[[1]] contains the data for the first group, x[[2]] the data
-#   for the second group, etc. Length(x)=the number of groups = J.
-#   If stored in a matrix, columns correspond to groups.
-#
-#   grp is used to specify some subset of the groups, if desired.
-#   By default, all J groups are used.
-#
-#   The default number of bootstrap samples is nboot=500
-#
-	argslist<-formals()
-	#require("parallel")
-	if(!is.list(x) && !is.matrix(x))stop('Data must be stored in a matrix or in list mode.')
-	if(is.list(x)){
-		# put the data in an n by J matrix
-		mat<-matrix(0,length(x[[1]]),length(x))
-		for (j in 1:length(x))mat[,j]<-x[[j]]
-	}
-	if(is.matrix(x))mat<-x
-	if(!is.na(grp[1])){
-		mat<-mat[,grp]
-	}
-	mat<-elimna(mat) # Remove rows with missing values.
-	J<-ncol(mat)
-	jp<-0
-	Jall<-(J^2-J)/2
-	dif<-matrix(NA,nrow=nrow(mat),ncol=Jall)
-	ic<-0
-	#browser()
-	for(j in 1:J){
-		for(k in 1:J){
-			if(j<k){
-				ic<-ic+1
-				dif[,ic]<-mat[,j]-mat[,k]; 
-			}
-		}
-	}
-	dif<-as.matrix(dif)
-	if(SEED)set.seed(2) # set seed of random number generator so that
-#             results can be duplicated.
-	data <- as.data.frame(t(matrix(sample(nrow(mat), size = nrow(mat) * nboot, replace = T),
-                nrow = nboot)))
-	if(identical(est, skip_C)){
-		if(!("MM" %in% names(argslist))) MM=FALSE
-		else if(!is.logical(argslist$MM)) stop("MM needs to be a boolean")
-		output<-mapply(function(index) outpro_preloop(dif[index,],...), data, SIMPLIFY=F)
-		m<-lapply(output, "[[", "m")
-		center<-lapply(output, "[[", "center")
-		gval<-outpro_gval(dif,...)
-		bvec<-.Call("outpro_loop2", M=m, GVAL=gval, CENTER=center, MM=MM, NBOOT=nboot, 
-					N=nrow(mat), NCOL=Jall)
-		#bvec<-as.data.frame(t(matrix(bvec, nrow=nboot, byrow=TRUE)))
-	} else {
-		bvec<-mapply(function(index) est(dif[index,],...)$center, data)
-		bvec<-t(bvec)
-		#browser()
-	}
-	center<-est(dif,...)$center
-	bcen<-colMeans(bvec)
-	cmat<-var(bvec-bcen+center)
-	zvec<-rep(0,Jall)
-	m1<-rbind(bvec,zvec)
-	bplus<-nboot+1
-	discen<-mahalanobis(m1,center,cmat)
-	sig.level<-sum(discen[bplus]<=discen)/bplus
-	list(p.value=sig.level,center=center)
-}
-
-#data<-matrix(sample(60, 10*60, T), nrow=10)
-
-#output<-mapply(function(index) outpro_preloop(m[index,]), as.data.frame(t(data)), SIMPLIFY=FALSE)
-#m<-lapply(output, "[[", "m")
-#center<-lapply(output, "[[", "center")
-#.Call("outpro_loop", M=m, GVAL=3.057516, CENTER=center, MM=FALSE, NBOOT=10)
-
-outpro_preloop<-function(m,gval=NA,center=NA,plotit=TRUE,op=TRUE,MM=FALSE,cop=3,
-xlab="VAR 1",ylab="VAR 2",STAND=FALSE,tr=.2,q=.5,pr=TRUE,...){
-	#
-# Detect outliers using a modification of the
-# Stahel-Donoho  projection method.
-#
-# Determine center of data cloud, for each point,
-# connect it with center, project points onto this line
-# and use distances between projected points to detect
-# outliers. A boxplot method is used on the
-# projected distances.
-#
-# plotit=TRUE creates a scatterplot when working with
-# bivariate data.
-#
-# op=T
-# means the .5 depth contour is plotted
-# based on data with outliers removed.
-#
-# op=F
-# means .5 depth contour is plotted without removing outliers.
-#
-#  MM=F  Use interquatile range when checking for outliers
-#  MM=T  uses MAD.
-#
-#  If value for center is not specified,
-#  there are four options for computing the center of the
-#  cloud of points when computing projections:
-#
-#  cop=2 uses MCD center
-#  cop=3 uses median of the marginal distributions.
-#  cop=4 uses MVE center
-#  cop=5 uses TBS
-#  cop=6 uses rmba (Olive's median ball algorithm)#  cop=7 uses the spatial (L1) median
-#
-#  args q and tr having are not used by this function. They are included to deal
-#  with situations where smoothers have optional arguments for q and tr
-#
-#  When using cop=2, 3 or 4, default critical value for outliers
-#  is square root of the .975 quantile of a
-#  chi-squared distribution with p degrees
-#  of freedom.
-#
-#  STAND=T means that marginal distributions are standardized before
-#  checking for outliers.
-#
-#  Donoho-Gasko (Tukey) median is marked with a cross, +.
-#
-	m<-as.matrix(m)
-	if(pr){
-		if(!STAND){
-			#if(ncol(m)>1)cat("STAND=FALSE. If measures are on different scales,", 
-			#					"might want to use STAND=TRUE\n")
-		}
-	}
-	library(MASS)
-	m=elimna(m)
-	m<-as.matrix(m)
-	nv=nrow(m)
-	if(ncol(m)==1){
-		dis<-(m-median(m,na.rm=TRUE))^2/mad(m,na.rm=TRUE)^2
-		dis<-sqrt(dis)
-		dis[is.na(dis)]=0
-		crit<-sqrt(qchisq(.975,1))
-		chk<-ifelse(dis>crit,1,0)
-		vec<-c(1:nrow(m))
-		outid<-vec[chk==1]
-		keep<-vec[chk==0]
-	}
-	if(ncol(m)>1){
-		if(STAND)m=standm(m,est=median,scat=mad)
-		if(cop==1 && is.na(center[1])){
-			if(ncol(m)>2)center<-dmean(m,tr=.5,cop=1)
-			if(ncol(m)==2){
-				tempd<-NA
-				for(i in 1:nrow(m))
-				tempd[i]<-depth(m[i,1],m[i,2],m)
-				mdep<-max(tempd)
-				flag<-(tempd==mdep)
-				if(sum(flag)==1)center<-m[flag,]
-				if(sum(flag)>1)center<-apply(m[flag,],2,mean)
-			}
-		}
-		if(cop==2 && is.na(center[1])){
-			center<-cov.mcd(m)$center
-		}
-		if(cop==4 && is.na(center[1])){
-			center<-cov.mve(m)$center
-		}
-		if(cop==3 && is.na(center[1])){
-			center<-apply(m,2,median)
-		}
-		if(cop==5 && is.na(center[1])){
-			center<-tbs(m)$center
-		}
-		if(cop==6 && is.na(center[1])){
-			center<-rmba(m)$center
-		}
-		if(cop==7 && is.na(center[1])){
-			center<-spat(m)
-		}
-	}
-	list(m=m, center=center)
-}
-
-outpro_gval<-function(m,gval=NA,center=NA,plotit=TRUE,op=TRUE,MM=FALSE,cop=3,
-xlab="VAR 1",ylab="VAR 2",STAND=FALSE,tr=.2,q=.5,pr=TRUE,...){
-	#
-# Detect outliers using a modification of the
-# Stahel-Donoho  projection method.
-#
-# Determine center of data cloud, for each point,
-# connect it with center, project points onto this line
-# and use distances between projected points to detect
-# outliers. A boxplot method is used on the
-# projected distances.
-#
-# plotit=TRUE creates a scatterplot when working with
-# bivariate data.
-#
-# op=T
-# means the .5 depth contour is plotted
-# based on data with outliers removed.
-#
-# op=F
-# means .5 depth contour is plotted without removing outliers.
-#
-#  MM=F  Use interquatile range when checking for outliers
-#  MM=T  uses MAD.
-#
-#  If value for center is not specified,
-#  there are four options for computing the center of the
-#  cloud of points when computing projections:
-#
-#  cop=2 uses MCD center
-#  cop=3 uses median of the marginal distributions.
-#  cop=4 uses MVE center
-#  cop=5 uses TBS
-#  cop=6 uses rmba (Olive's median ball algorithm)#  cop=7 uses the spatial (L1) median
-#
-#  args q and tr having are not used by this function. They are included to deal
-#  with situations where smoothers have optional arguments for q and tr
-#
-#  When using cop=2, 3 or 4, default critical value for outliers
-#  is square root of the .975 quantile of a
-#  chi-squared distribution with p degrees
-#  of freedom.
-#
-#  STAND=T means that marginal distributions are standardized before
-#  checking for outliers.
-#
-#  Donoho-Gasko (Tukey) median is marked with a cross, +.
-#
-	m<-as.matrix(m)
-	if(pr){
-		if(!STAND){
-			#if(ncol(m)>1)cat("STAND=FALSE. If measures are on different scales,", 
-			#					"might want to use STAND=TRUE\n")
-		}
-	}
-	library(MASS)
-	m=elimna(m)
-	m<-as.matrix(m)
-	nv=nrow(m)
-	if(ncol(m)==1){
-		dis<-(m-median(m,na.rm=TRUE))^2/mad(m,na.rm=TRUE)^2
-		dis<-sqrt(dis)
-		dis[is.na(dis)]=0
-		crit<-sqrt(qchisq(.975,1))
-		chk<-ifelse(dis>crit,1,0)
-		vec<-c(1:nrow(m))
-		outid<-vec[chk==1]
-		keep<-vec[chk==0]
-	}
-	if(ncol(m)>1){
-		if(STAND)m=standm(m,est=median,scat=mad)
-		if(is.na(gval) && cop==1)gval<-sqrt(qchisq(.95,ncol(m)))
-		if(is.na(gval) && cop!=1)gval<-sqrt(qchisq(.975,ncol(m)))
-	}
-	gval
-}
-	
-
-
-
-rmdzeroG<-function(x,est=skip,grp=NA,nboot=500,SEED=TRUE,...){
-#
-#   Do ANOVA on dependent groups
-#   using #   depth of zero among  bootstrap values
-#   based on difference scores.
-#
-#   The data are assumed to be stored in x in list mode
-#   or in a matrix. In the first case
-#   x[[1]] contains the data for the first group, x[[2]] the data
-#   for the second group, etc. Length(x)=the number of groups = J.
-#   If stored in a matrix, columns correspond to groups.
-#
-#   grp is used to specify some subset of the groups, if desired.
-#   By default, all J groups are used.
-#
-#   The default number of bootstrap samples is nboot=500
-#
-if(!is.list(x) && !is.matrix(x))stop('Data must be stored in a matrix or in list mode.')
-if(is.list(x)){
-# put the data in an n by J matrix
-mat<-matrix(0,length(x[[1]]),length(x))
-for (j in 1:length(x))mat[,j]<-x[[j]]
-}
-if(is.matrix(x))mat<-x
-if(!is.na(grp[1])){
-mat<-mat[,grp]
-}
-mat<-elimna(mat) # Remove rows with missing values.
-J<-ncol(mat)
-jp<-0
-Jall<-(J^2-J)/2
-dif<-matrix(NA,nrow=nrow(mat),ncol=Jall)
-ic<-0
-for(j in 1:J){
-for(k in 1:J){
-if(j<k){
-ic<-ic+1
-dif[,ic]<-mat[,j]-mat[,k]
-}}}
-dif<-as.matrix(dif)
-if(SEED)set.seed(2) # set seed of random number generator so that
-#             results can be duplicated.
-data <- matrix(sample(nrow(mat), size = nrow(mat) * nboot, replace = T),
-                nrow = nboot)
-bvec <- matrix(NA, ncol = ncol(dif), nrow = nboot)
-        for(i in 1:nboot) {
-                bvec[i, ] <- est(dif[data[i,],],...)$center
-        }  #bvec is an nboot by Jm matrix
-center<-est(dif,...)$center
-bcen<-apply(bvec,2,mean)
-cmat<-var(bvec-bcen+center)
-zvec<-rep(0,Jall)
-m1<-rbind(bvec,zvec)
-bplus<-nboot+1
-discen<-mahalanobis(m1,center,cmat)
-sig.level<-sum(discen[bplus]<=discen)/bplus
-list(p.value=sig.level,center=center)
-}
 */
