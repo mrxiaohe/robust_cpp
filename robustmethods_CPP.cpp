@@ -639,7 +639,7 @@ RcppExport SEXP fdepthv2_for(SEXP M, SEXP PTS){
 	}
 	return(mdep);
 }
-	
+
 RcppExport SEXP fdepthv2_for2(SEXP M, SEXP PTS){
 	NumericMatrix pts(PTS);
 	NumericMatrix m(M);
