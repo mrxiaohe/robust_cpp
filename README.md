@@ -70,7 +70,7 @@ We will use the function `regci()` from `Rallfun-v22.R` to test the performances
 ####3. `fdepthv2` and `fdepthv2_C`
 `fdepthv2` determines the depth of points in `pts` relative to points in `m`. It draws a line between each pair of distinct points and determines depth of the projected points. The final depth of a point is its minimum depth among all projections.
 
-This function is slower than `fdepth` and requires space for a nc by nc matrix, nc=(n^2-n)/2. But it allows data to have a singular covariance matrix and it provides a more accurate approximation of halfspace depth. 
+This function allows data to have a singular covariance matrix and it provides a more accurate approximation of halfspace depth. 
 
 `plotit=TRUE` creates a scatterplot when working with bivariate data and pts=NA.
 
