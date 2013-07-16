@@ -132,12 +132,19 @@ double median(NumericVector x) {
 }
 
 double mad(NumericVector x, double constant=1.4826){
-	NumericVector xcopy=Rcpp::clone(x);
-	int n=xcopy.size();
-	double center=median(xcopy);
-	NumericVector diff=xcopy-center;
+	//NumericVector xcopy=Rcpp::clone(x);
+	int n=x.size();
+	double center=median(x);
+	NumericVector diff=x-center;
 	NumericVector diff_abs=ifelse(diff<0, -diff, diff);
 	return median(diff_abs)*constant;
+}
+
+
+double mad(arma::vec x, double constant=1.4826){
+	NumericVector X = Rcpp::as<Rcpp::NumericVector>(wrap(x));
+	double output = mad(X);
+	return output;
 }
 
 NumericVector outer_pos(NumericVector x, NumericVector y){
@@ -324,9 +331,6 @@ RcppExport SEXP stsregp1_C(SEXP X, SEXP Y){
 	NumericVector allvar(n_s);
 	double temp;
 	for(int i=0; i<n_s;i++){
-		//NumericVector temp(pbvar_C(wrap(y-v1v2(i)*x), wrap(0.2)));
-		//allvar(i)=temp(0);
-		//temp = pbvar_C(wrap(y-v1v2(i)*x), wrap(0.2))
 		temp = pbvar_C(y-v1v2(i)*x, 0.2);
 		allvar(i) = temp;
 		R_CheckUserInterrupt();
@@ -639,7 +643,7 @@ RcppExport SEXP fdepthv2_for(SEXP M, SEXP PTS){
 	}
 	return(mdep);
 }
-
+	
 RcppExport SEXP fdepthv2_for2(SEXP M, SEXP PTS){
 	NumericMatrix pts(PTS);
 	NumericMatrix m(M);
@@ -718,16 +722,6 @@ NumericVector idealf(NumericVector x){
 	output(1)=(1.0-g)*xcopy(k)+g*xcopy(k-1);
 	return output;
 }
-
-/*
-library(RcppArmadillo)
-source("Rallfun-v22.R")
-source("/Users/praguewatermelon/Dropbox/robustmethod_CPP.R")
-dyn.load("robustmethods_CPP.so")
-set.seed(1)
-x=rmul(60, 4)
-rmdzeroG(m, est=skip_C)
-*/
 
 
 RcppExport SEXP mahalanobis(SEXP X, SEXP CENTER, SEXP COV){
@@ -910,16 +904,16 @@ RcppExport SEXP outpro_for(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM){
 
 	for(int i=0; i<nrows; i++){
 		R_CheckUserInterrupt();
-		B=m(i,_)-center;
+		B  = m(i,_)-center;
 		BB = B*B;
 		NumericVector dis(nrows);
-		double bot=sum(BB); 
+		double bot = sum(BB); 
 		R_CheckUserInterrupt();
 		if(bot!=0){
 			for(int j=0;j<nrows;j++){
-				A=m(j,_)-center;
-				temp=sum(A*B)*B/bot;
-				dis(j)=pow(sum(temp*temp), 0.5);
+				A = m(j,_)-center;
+				temp = sum(A*B)*B/bot;
+				dis(j) = pow(sum(temp*temp), 0.5);
 			}
 			temp_idealf=idealf(dis);
 			double cu;
@@ -951,13 +945,7 @@ double depths1( double m, double j ){
 	}
 	return dep;
 }
-/*
-RcppExport SEXP depth(double u, double v, NumericMatrix m){
-	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
-	int n = m.nrow(), 
-	return(wrap(p));
-}
-*/
+
 RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
 	NumericMatrix m(M); 
 	NumericVector UU(U), VV(V), alpha;
@@ -1260,154 +1248,6 @@ double depth(double u, double v, NumericMatrix m){
 }
 
 
-double depth2(double u, double v, NumericMatrix m){
-	IntegerVector fv;
-	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
-	double p2 = p*2.0, eps = 0.000001;
-	int n = m.nrow(), nt = 0;
-	NumericVector alpha(n);
-	for( int i=0; i < n; i++ ){
-		double dv = ( m(i, 0) - u )*( m(i, 0) - u ) + ( m(i, 1) - v )*( m(i, 1) - v );
-		dv = pow(dv, 0.5);
-		if( dv <= eps ){
-			nt += 1;
-		}else{
-			double xu = (m(i, 0) - u)/dv, yu = (m(i, 1) - v)/dv;
-			if( fabs(xu) > fabs(yu) ){
-				if( m(i,0) >= u ){
-					alpha.push_back( asin(yu) );
-					if( alpha( alpha.size()-1 ) < 0.0 ){
-						alpha( alpha.size()-1 ) += p2;
-					} 
-				}else {
-					alpha.push_back( p - asin( yu ) );
-				}
-			} else {
-				if( m(i, 1) >= v ){
-					alpha.push_back( acos(xu) );
-				} else {
-					alpha.push_back( p2 - acos(xu) );
-				}
-			}
-			if( alpha( alpha.size()-1 ) >= (p2 - eps) ){
-				alpha( alpha.size()-1 ) = 0.0;
-			}
-		}
-	}
-	int nn = n - nt;
-	if( nn <= 1 ){
-		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-				depths1( (double)nt, 3 );
-		numh += nt;
-		return( numh/n );
-	}
-	std::sort( alpha.begin(), alpha.end() );
-	double angle = alpha(0) - alpha( alpha.size()-1 ) + p2;
-	for( int i=1; i<nn; i++ ){
-		double dif = (alpha(i) - alpha(i-1));  
-		if( angle < dif )
-			angle = dif;
-	}
-	if( angle > (p + eps) ){
-		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-				depths1( (double)nt, 3 );
-		numh += nt;
-		return( numh/n );
-	}
-	angle = alpha(0);
-	int nu = 0;
-	for( int i=0; i<nn; i++ ){
-		alpha(i) = alpha(i) - angle;
-		if( alpha(i) < (p - eps) ){
-			nu += 1;
-		}
-	}
-	if( nu >= nn ){
-		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-				depths1( (double)nt, 3 );
-		numh += nt;
-		return( numh/n );
-	}
-//  Mergesort the alpha with their antipodal angles beta and at the same time update I, F(I), and NBAD.
-	int ja = 1, jb = 1, nn2 = nn*2, nbad = 0, I = nu, nf = nn;
-	double alphk = alpha(0), betak = alpha(nu) - p;
-	IntegerVector fv_id;
-	for( int i=0; i<nn2; i++ ){
-		double add = alphk + eps;
-		if ( add < betak ){
-			nf += 1;
-			if( ja < nn ){
-				ja += 1;
-				alphk = alpha(ja - 1);
-			} else {
-				alphk = p2 + 1.0;
-			}
-		} else {
-			I += 1;
-			int nn1 = nn + 1;
-			if( I == nn1 ){
-				I = 1;
-				nf = nf - nn;
-			}
-			fv.push_back(nf);
-			fv_id.push_back(I-1);
-			int nfi = nf - I;
-			nbad += (int)depths1( (double)nfi, 2.0 );
-			if( jb < nn ){
-				jb += 1;
-				if( (jb + nu) <= nn ){
-					betak = alpha( jb + nu - 1 ) - p;
-				} else {
-					betak = alpha( jb + nu - nn - 1 ) + p;
-				}
-			} else {
-				betak = p2 + 1.0;
-			}
-		}
-	}
-	// Computation of numh for halfspace depth.
-	int gi = 0;
-	ja = 1;
-	arma::vec fv2( fv.size() );
-	for( int i=0; i < fv.size(); i++ ){
-		fv2( fv_id(i) ) = fv(i);
-	}
-	arma::uvec fv_id2 = sort_index( Rcpp::as<arma::vec>(fv_id) );
-	angle = alpha(0);
-	int dif = nn - fv2(0);
-	NumericVector numh_temp(2);
-	numh_temp(0) = fv2(0)*1.0;
-	numh_temp(1) = dif*1.0;
-	numh = min(numh_temp);
-	for( int i=1; i < nn; i++ ){
-		double aeps = angle + eps;
-		if( alpha(i) <= aeps ){
-			ja += 1;
-		} else {
-			gi += ja;
-			ja = 1;
-			angle = alpha(i);
-		}
-		int ki = fv2(i) - gi;
-		int nnki = nn - ki;
-		if( ki >= nnki ){
-			ki = nnki;
-		}
-		if( numh >= ki )
-			numh = ki;
-	}
-	nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-			depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-			depths1( (double)nt, 3 );
-	numh = numh + nt;
-	return( numh/n );
-}
-
-
-
 RcppExport SEXP outpro_C(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM, SEXP COP, SEXP TR, SEXP Q){
 	BEGIN_RCPP
 	arma::mat m = Rcpp::as<arma::mat>(M);
@@ -1540,7 +1380,6 @@ IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center
 		}
 		if( cop(0) == 3 && R_IsNA(center(0)) ){
 			center = Rcpp::as<Rcpp::NumericMatrix>(wrap(arma::median( m )))(0,_);
-			//Rprintf("\nCENTER: \n\n%lf  %lf   %lf   %lf\n\n", center(0),center(1),center(2),center(3));
 		}
 		if( cop(0) == 6 && R_IsNA(center(0)) ){
 			center = rmba( Rcpp::as<Rcpp::NumericMatrix>(wrap( m )), 
@@ -1574,12 +1413,9 @@ IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center
 		}		
 		for( int i=0; i < nv; i++ ){
 			if(!flag(i))
-//				outid.push_back(i);
-//			else
 				keepid.push_back(i);
 		}
 	}
-	//return List::create(_["outid"] = outid, _["keepid"] = keepid);
 	return(wrap(keepid));
 }
 
@@ -1591,7 +1427,6 @@ RcppExport SEXP skip(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP TR, SEXP Q){
 	LogicalVector mm(MM);
 	IntegerVector outpro_cop(OUTPRO_COP);
 	IntegerVector keepid = outpro_C(m, gval, center, mm, outpro_cop, tr, q);
-	//IntegerVector keepid = output(1);
 	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
 	return(wrap(val));
 }
@@ -1635,18 +1470,286 @@ RcppExport SEXP skip_boot(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP BOOTID){
 }
 
 
-/*
+
+NumericVector winval(NumericVector x, double tr=0.2){
+	NumericVector xcopy = Rcpp::clone(x);
+	std::sort(xcopy.begin(), xcopy.end());
+	int n = xcopy.size();
+	double ibot = floor(0.2*n);
+	double itop = n - ibot - 1;
+	double xbot = xcopy(ibot);
+	double xtop = xcopy(itop);
+	NumericVector output(n);
+	for( int i=0; i < n; i++ ){
+		if( x(i) > xtop )
+			output(i) = xtop;
+		else if( x(i) < xbot )
+			output(i) = xbot;
+		else
+			output(i) = x(i);
+	}
+	return output;
+}
+
+double winvar(NumericVector x){
+	return arma::as_scalar( arma::var( Rcpp::as<arma::vec>(winval(x)) ) );
+}
 
 
-bootid2 <- list( c(1, 5, 9, 1, 4, 5, 7, 4, 9, 4),
- 				 c(7, 1, 9, 8, 5, 2, 1, 8, 2, 0))
 
-dyn.load("/Users/xiaohe/Dropbox/github/robust_cpp/robustmethods_CPP.so")
-source("/Users/xiaohe/Dropbox/github/robust_cpp/robustmethods_CPP.R")
-source("/Users/xiaohe/Dropbox/github/robust_cpp/Rallfun-v22.R")
-set.seed(1)
-x=matrix(rnorm(80), 20, 4)
-#bootid = list(sample(0:9, 10, replace=TRUE), sample(0:9, 10, replace=TRUE))
-.Call("skip_boot", x, FALSE, 6, bootid)
+arma::vec near(arma::vec x, double pt, double fr=1.0){
+	//determine which values in x are near pt based on fr * mad
+	double m = mad(x);
+	NumericVector temp(2);
+	arma::vec dflag = zeros(x.n_elem);
+	if (m == 0.0){
+		temp = idealf(Rcpp::as<Rcpp::NumericVector>(wrap(x)));
+		m = ( temp(1) - temp(0) )/(R::qnorm(.75, 0.0, 1.0, 1, 0) - 
+								   R::qnorm(.25, 0.0, 1.0, 1, 0));
+	}
+	if (m == 0.0){
+		m = sqrt( winvar( Rcpp::as<Rcpp::NumericVector>(wrap(x))) )/0.4129;
+	}
+	if (m == 0.0)
+		throw std::runtime_error("All measures of dispersion are equal to 0!");
+	for( int i=0; i < x.n_elem; i++){
+		if( fabs(x(i) - pt) <= (fr*m) ){
+			dflag(i) = 1;
+		}
+	}
+	return dflag;
+}
 
-*/
+
+RcppExport SEXP near(SEXP X, SEXP PT){
+	BEGIN_RCPP
+	arma::vec x = Rcpp::as<arma::vec>(wrap(X));
+	double pt = Rcpp::as<double>(wrap(PT));
+	arma::vec output = near(x, pt);
+
+	return(wrap(output));
+	END_RCPP
+}
+
+
+
+double tmean(NumericVector x, double tr=0.2){
+	arma::vec xcopy = Rcpp::as<arma::vec>(x);
+	int n = xcopy.n_elem, lo = floor(n * tr), hi = n - lo - 1;
+	xcopy = arma::sort(xcopy);
+	return arma::as_scalar(arma::mean(xcopy.subvec( span(lo, hi) )));
+}
+
+RcppExport SEXP tmean(SEXP X, SEXP TR){
+	BEGIN_RCPP
+	NumericVector x(X), tr(TR);
+	double output;
+	output  = tmean(x, tr(0));
+	return(wrap(output));
+	END_RCPP
+}
+
+double tmean(arma::vec x, double tr=0.2){
+	arma::vec xcopy(x);
+	int n = xcopy.n_elem, lo = floor(n * tr), hi = n - lo - 1;
+	xcopy = arma::sort(xcopy);
+	return arma::as_scalar(arma::mean(xcopy.subvec( span(lo, hi) )));
+}
+
+
+List aov2depth(List x1, List x2, int nboot=500, double estimator=1){
+	// 2 by K ANOVA independent groups
+	//
+	//  Main effect Factor A only
+	//
+	//Strategy: Use depth of zero based on estimated
+	//differences for each column  of the K levels of Factor B
+	//That is, testing no main effects for Factor A in 
+	//a manner that takes into account the pattern of the
+	//measures of location rather then simply averaging 
+	//across columns.
+	int J = x1.size();
+	if( J != x2.size() )
+		throw std::runtime_error("x1 and x2 should have same number of groups");
+	IntegerVector n1(J), n2(J);
+	NumericVector est1(J), est2(J);
+	arma::mat difb(nboot +1, J), dif(1, J);
+	difb.zeros();
+
+	for( int j=0; j < J; j++ ){
+		R_CheckUserInterrupt();
+		NumericVector tempx1 = x1(j), tempx2 = x2(j);
+		n1(j) = tempx1.size();
+		n2(j) = tempx2.size();
+		if( estimator == 1){
+			est1(j) = tmean(tempx1);
+			est2(j) = tmean(tempx2);
+		} else if ( estimator == 2){
+			est1(j) = median(tempx1);
+			est2(j) = median(tempx2);
+		} else if ( estimator == 3){
+			est1(j) = mean(tempx1);
+			est2(j) = mean(tempx2);
+		}
+		dif(0,j)  = est1(j) - est2(j);
+
+		arma::uvec n1boot(n1(j)), n2boot(n2(j));
+		IntegerVector n1boot2(n1(j)), n2boot2(n2(j));
+
+		for( int k=0; k < nboot; k++ ){
+			n1boot2 = floor(runif(n1(j), 0, n1(j)));
+			n2boot2 = floor(runif(n2(j), 0, n2(j)));
+			n1boot  = Rcpp::as<arma::uvec>(n1boot2);
+			n2boot  = Rcpp::as<arma::uvec>(n2boot2);
+
+			difb(k, j) = tmean((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
+					     tmean((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
+
+			if( estimator == 1){
+				difb(k, j) = tmean((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
+						     tmean((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
+			} else if ( estimator == 2){
+				difb(k, j) = arma::median((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
+					     	 arma::median((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
+			} else if ( estimator == 3){
+				difb(k, j) = arma::mean((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
+					     	 arma::mean((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
+			}
+		}
+	}
+	arma::mat m1 = arma::cov(difb.submat(0, 0, nboot-2, J-1));
+	arma::mat dis = mahalanobis(difb, dif.t(), m1);
+	int bplus = nboot + 1;
+	arma::uvec sig_vec = find( dis.col(0) >= dis(bplus-1, 0) );
+	double sig = sig_vec.n_elem*1.0/(1.0*bplus);
+	return List::create(_["pvalue"] = sig, 
+						_["est1"] 	= est1, 
+						_["est2"] 	= est2,
+						_["dif"] 	= dif,
+						_["n1"] 	= n1,
+						_["n2"] 	= n2);
+}
+
+
+List ancGLOB_sub3_C(arma::mat x1, arma::vec y1, arma::mat x2, arma::vec y2, bool xout, SEXP PTS,
+					int nmin, int nboot, double fr1, double fr2, int estimator){
+	NumericVector pts;
+	List g1, g2;
+	IntegerVector n3;
+	if(xout){
+		arma::mat tempx1 = x1;
+		arma::mat tempx2 = x2;
+		arma::vec tempy1 = y1;
+		arma::vec tempy2 = y2;
+		
+		NumericVector gval(1, NA_REAL), center(tempx1.n_cols, NA_REAL), tr(1, 0.2), q(1, 0.5);
+		LogicalVector mm(1, FALSE);
+		IntegerVector outpro_cop(1, 3);
+		IntegerVector keepid1 = outpro_C(Rcpp::as<Rcpp::NumericMatrix>(wrap(tempx1)), 
+										 gval, center, mm, outpro_cop, tr, q);
+		IntegerVector keepid2 = outpro_C(Rcpp::as<Rcpp::NumericMatrix>(wrap(tempx2)), 
+										 gval, center, mm, outpro_cop, tr, q);
+		x1 = tempx1.rows(Rcpp::as<arma::uvec>(keepid1));
+		y1 = tempy1(Rcpp::as<arma::uvec>(keepid1));
+		x2 = tempx2.rows(Rcpp::as<arma::uvec>(keepid2));
+		y2 = tempy2(Rcpp::as<arma::uvec>(keepid2));
+	}
+	int N1 = y1.n_elem, N2 = y2.n_elem;
+	if(Rf_isNull(PTS)){
+		int test[5];
+		arma::uvec xorder1 = sort_index( x1.col(0) ), isub(5);
+		x1 = x1.rows(xorder1);
+		y1 = y1.elem(xorder1);
+		arma::uvec xorder2 = sort_index( x2.col(0) );
+		x2 = x2.rows(xorder2);
+		y2 = y2.elem(xorder2);
+		arma::uvec n1(N1), n2(N1), vecn(N1);
+		arma::uvec tempid1, tempid2;
+		IntegerVector sub;
+		for( int i=0; i < N1; i++){
+			tempid1 = find( near(x1.col(0), x1(i,0), fr1) == 1 );
+			tempid2 = find( near(x2.col(0), x1(i,0), fr2) == 1 );
+			n1(i) = tempid1.n_elem;
+			n2(i) = tempid2.n_elem;
+			if ( n1(i) < n2(i) ) 
+				vecn(i) = n1(i);
+			else 
+				vecn(i) = n2(i);
+			if ( vecn(i) >= nmin ){
+				sub.push_back(i);
+
+			}
+		}
+		isub(0) = min(sub);
+		isub(4) = max(sub);
+		isub(2) = floor((isub(0) + isub(4))/2);
+		isub(1) = floor((isub(0) + isub(2))/2);
+		isub(3) = floor((isub(2) + isub(4))/2);
+
+		for( int i=0; i < 5 && sub.size() > 0; i++ ){
+			pts.push_back( arma::as_scalar(x1(isub(i), 0)) );
+			arma::vec tempy1 = y1.elem( find(near(x1.col(0), pts(i), fr1) == 1) );
+			arma::vec tempy2 = y2.elem( find(near(x2.col(0), pts(i), fr2) == 1) );
+			g1.push_back(  tempy1 );
+			g2.push_back(  tempy2 );
+			n3.push_back(tempy1.n_elem);
+		}
+	}else{
+		pts = Rcpp::as<Rcpp::NumericVector>(PTS);
+		if(pts.size() < 2) 
+			throw std::runtime_error("Should have at least two points (use the R function ancova)");
+		for( int i=0; i < pts.size(); i++ ){
+			arma::vec tempy1 = y1.elem( find(near(x1.row(0), pts(i), fr1) == 1) ); 
+			arma::vec tempy2 = y2.elem( find(near(x2.row(0), pts(i), fr2) == 1) );
+			g1.push_back(  tempy1 );
+			g2.push_back(  tempy2 );
+			n3.push_back(tempy1.n_elem);
+		}
+	}
+	List output;
+	if( g1.size() > 0){
+		output = aov2depth(g1, g2, nboot, estimator);
+	} else {
+		output.push_back(NA_REAL);
+	}
+	return output;
+}
+
+
+
+RcppExport SEXP ancGLOB_sub2_C(SEXP BVEC, SEXP N1, SEXP N2, SEXP FR1, SEXP FR2, SEXP PTS, SEXP EST){
+	BEGIN_RCPP
+	List bvec(BVEC);
+	int niter = bvec.size(), n1 = Rcpp::as<int>(wrap(N1)), n2 = Rcpp::as<int>(wrap(N2));
+	int ng1, ng2,  estimator = Rcpp::as<int>(wrap(EST));
+	if(n1 > n2){
+		ng1 = n2;
+		ng2 = n1;
+	} else {
+		ng1 = n1;
+		ng2 = n2;
+	}
+	double fr1 = Rcpp::as<double>(wrap(FR1)), fr2 = Rcpp::as<double>(wrap(FR2));
+	arma::vec y1(ng1), y2(ng2);
+	arma::mat x1(ng1, 1), x2(ng2, 1);
+	bool xout=FALSE;
+	int nmin = 12, nboot=500;
+	arma::vec temp(n1*2+n2*2), pval(niter);
+	List templist;
+	for( int i = 0; i < niter; i++ ){
+		temp = Rcpp::as<arma::vec>(wrap(bvec(i)));
+		for( int j = 0; j < ng1; j++ ){
+		 	x1(j, 0) = temp(j);
+		 	y1(j) = temp(j+ng1);
+		}
+		for( int j = 0; j < ng2; j++ ){
+			x2(j, 0) = temp(j + ng1*2);
+		 	y2(j) = temp(j + ng1*2 + ng2);
+		}
+		templist = ancGLOB_sub3_C(x1, y1, x2, y2, xout, PTS, nmin, nboot, fr1, fr2, estimator);
+		pval(i) = Rcpp::as<double>(templist(0));
+	}
+	return(wrap(pval));
+	END_RCPP
+}
+
