@@ -1,14 +1,84 @@
 #include <R.h>
+#include <float.h>
+#include <R_ext/Linpack.h>
+#include <R_ext/Applic.h>	/* for the QR	  routines */
+#include <R_ext/Utils.h>	/* for the *sort() routines */
 #include <stdio.h>
 #include <RcppArmadillo.h>
+#define BIG DBL_MAX
+
 // [[Rcpp::depends(RcppArmadillo)]]
 
 using namespace Rcpp;
 using namespace arma;
 
+//IntegerVector order(NumericVector x);
+
+
+
 IntegerVector order(NumericVector x);
+NumericVector eigenval(arma::mat M);
+double gvar_C(arma::mat M);
+double median( NumericVector x );
+double median( arma::vec x );
+double mad( NumericVector x, double constant);
+double mad( arma::vec x, double constant);
+NumericVector outer_pos( NumericVector x, NumericVector y );
+NumericVector outer_pos( arma::vec x, arma::vec y );
+double hd_C( NumericVector x, double q );
+double hd_C( arma::vec x, double q );
+NumericVector ts_proc( arma::vec x, arma::vec y );
+NumericVector tshd_C( arma::vec x, arma::vec y, bool HD );
+NumericVector tshd_C( NumericVector x, NumericVector y, bool HD );
+double pbvar_C( NumericVector x, double beta );
+double pbvar_C( arma::vec x, double beta );
+NumericVector tsp1reg_C( arma::vec x, arma::vec y, bool HD );
+List stsregp1_C( arma::vec x, arma::vec y );
+List stsreg_for( arma::mat x, arma::colvec y, int it);
+List stsreg_C( arma::mat x, arma::vec y, int it );
+List tshdreg_for( arma::mat x, arma::colvec y, int it, double tol, bool HD);
+List tshdreg_C( arma::mat x, arma::vec y, int it, double tol, bool HD );
+List tsreg_C( arma::mat x, arma::colvec y, int it, bool HD);
+NumericVector unidepth_C(NumericVector x, NumericVector y);
+NumericVector unidepth_C(arma::vec x, arma::vec y);
+NumericVector subsetVec(NumericVector A, int start, int end);
+double sign(double x);
+NumericVector fdepthv2_C( NumericMatrix m, int nrows_orig );
+NumericVector idealf(NumericVector x);
+arma::mat mahalanobis(arma::mat x, arma::mat center, arma::mat covs);
+arma::mat mahalanobis(NumericMatrix X, NumericMatrix CENTER, NumericMatrix COV);
+List rmba(arma::mat x, int csteps);
+NumericVector idealf(arma::vec x);
+LogicalVector outpro_for(NumericMatrix m, NumericVector gval, NumericVector center, bool mm );
+double depths1( double m, double j );
+double depth( double u, double v, NumericMatrix m );
+IntegerVector outpro_C(NumericMatrix M, NumericVector center, bool mm, 
+	                   int cop, double tr, double q, double gval);
+arma::uvec outpro_C(arma::mat m, NumericVector center, bool mm, 
+	                   int cop, double tr, double q, double gval);
+NumericVector winval(NumericVector x, double tr);
+double winvar(NumericVector x);
+arma::vec near(arma::vec x, double pt, double fr); 
+double tmean(NumericVector x, double tr);
+double tmean(arma::vec x, double tr);
+List aov2depth(List x1, List x2, int nboot, double estimator, double tr);
+List ancGLOB_sub3_C(arma::mat x1, arma::vec y1, arma::mat x2, arma::vec y2, bool xout, SEXP PTS,
+					int nmin, int nboot, double fr1, double fr2, int estimator, double tr);
+IntegerVector outbox_C( NumericVector x, double gval, bool mbox );
+NumericVector skip(NumericMatrix m, bool mm, int outpro_cop, double tr, double q);
+NumericVector skip(arma::mat m, bool mm, int outpro_cop, double tr, double q);
+NumericVector quantile( NumericVector x, double probs, int type );
+double IQR( NumericVector x );
+double IQR( arma::vec x );
+List covrob( arma::mat x, std::string nsamp, std::string method,
+			 bool cor, double quantileused );
+List covrob( arma::mat x, int nsampint, std::string method, 
+			 bool cor, double quantileused );
+
+
 
 template <class RandomAccessIterator, class StrictWeakOrdering>
+
 void sort(RandomAccessIterator first, RandomAccessIterator last, StrictWeakOrdering comp);
 
 struct val_order{
@@ -18,757 +88,626 @@ struct val_order{
 
 bool compare(const val_order & a, const val_order & b){return (a.value<b.value);}
 
-
-// arma in; arma out
-arma::mat sumbatC1(arma::mat X, arma::colvec T) {
-    mat y = X.rows(find(T == 1));
-    return y;
-}
-
-// rcpp in; arma out
-arma::mat submatrix(NumericMatrix X, NumericVector T) {
-    mat Xmat(X.begin(), X.nrow(), X.ncol(), false);
-    colvec tIdx(T.begin(), T.size(), false); 
-    mat y = Xmat.rows(find(tIdx == 1));
-    return y;
-}
-
-// rcpp in; rcpp out
-NumericMatrix sumbatC3(NumericMatrix X, LogicalVector condition) { 
-    int n=X.nrow(), k=X.ncol();
-    NumericMatrix out(sum(condition),k);
-    for (int i = 0, j = 0; i < n; i++) {
-        if(condition[i]) {
-            out(j,_) = X(i,_);
-            j = j+1;
-        }
-    }
-    return(out);
-}
-
-
-NumericVector eigenval(arma::mat M, Function eigen) {
-    List output=eigen(M);
-    
-    return output(0);
-}
-
-double gvar_C(arma::mat M){
-	arma::mat temp=arma::cov(M);
-	arma::vec values=arma::eig_sym(temp);
-	double output=arma::as_scalar(prod(values));
-	return output;
-}
-
-double sum(NumericVector v){
-	int n=v.size();
-	double Sum=0.0;
-	for(int i=0;i<n;i++)
-		Sum+=v(i);
-		
-	return Sum;
-}
-
-// [[Rcpp::export]]
-//NumericVector mgvar_while(NumericVector flag, NumericMatrix m){
-RcppExport SEXP mgvar_while(SEXP X, SEXP M){
-	NumericVector flag(X);
-	NumericMatrix m(M);
- 	int nr=m.nrow();
- 	NumericVector f=flag;
- 	arma::mat m_sub;
- 	NumericVector varvec(nr, 0.0);
-	while(sum(f)>0.0){
-		int ic=0;
-	 	NumericVector chk;
-	 	IntegerVector remi;
-		for(int i=0; i<nr; i++){
- 			if(f(i)==1.0) {
- 				ic+=1;
-	 			NumericVector f2=ifelse(f==1.0, 0.0, 1.0);
- 				m_sub=submatrix(m, f2);
- 				arma::rowvec m_i=m(i,_);
- 				m_sub.insert_rows(m_sub.n_rows, m_i);
-	 			chk.push_back(gvar_C(m_sub));
- 				remi.push_back(i);
- 			}
-		}
-		IntegerVector sor=order(chk);
- 		int k=remi(sor(0));
-		varvec(k)=chk(sor(0));
-		f(k)=0.0;
-		R_CheckUserInterrupt();
-	}
-	return varvec;
-}
-
 IntegerVector order(NumericVector x){
-	int n=x.size();
+	int n = x.size();
 	std::vector<int> output(n);
 	std::vector<val_order> index(n);
-	for(int i=0;i<x.size();i++){
-		index[i].value=x(i);
-		index[i].order=i;
+	for(int i = 0;i < n; i++){
+		index[i].value = x(i);
+		index[i].order = i;
 	}
 	std::sort(index.begin(), index.end(), compare); 
-	for(int i=0;i<x.size();i++){
-		output[i]=index[i].order;
+	for(int i = 0;i < n; i++){
+		output[i] = index[i].order;
 	}
 	return wrap(output);
 }
 
-double median(NumericVector x) {
-    double output;
-  	int n=x.size();
-  	std::vector<double> xcopy(n);
-    std::copy(x.begin(), x.end(), xcopy.begin());
-    std::sort(xcopy.begin(), xcopy.end());
-    if(n%2==0) {
-	   output=((xcopy[n/2] + xcopy[n/2-1])/2);
-    } else {
-      output=xcopy[n/2];
-   }
-    return output;
+Environment base("package:base");
+Function eigen = base["eigen"]; 
+
+
+NumericVector eigenval(arma::mat M) {
+    List output = eigen(Rcpp::wrap(M));    
+    return output(0);
 }
 
-double mad(NumericVector x, double constant=1.4826){
-	//NumericVector xcopy=Rcpp::clone(x);
-	int n=x.size();
-	double center=median(x);
-	NumericVector diff=x-center;
-	NumericVector diff_abs=ifelse(diff<0, -diff, diff);
+double gvar_C(arma::mat M){
+	return as_scalar( arma::prod(Rcpp::as<arma::vec>(eigenval( arma::cov(M) ))));
+}
+
+RcppExport SEXP mgvar_while(SEXP X, SEXP M){
+	BEGIN_RCPP
+	arma::mat m = Rcpp::as<arma::mat>(wrap(M));
+ 	int nr = m.n_rows;	
+	arma::vec f = Rcpp::as<arma::vec>(wrap(X));
+ 	arma::mat m_sub;
+ 	NumericVector varvec(nr, NA_REAL);
+ 	int sor, k;
+	while( sum(f) > 0 ){
+		std::vector<double> chk;
+		std::vector<int> remi;
+		for(int i=0; i<nr; i++){
+ 			if(f(i) == 1 ) {
+ 				m_sub = m.rows( find(f == 0) );
+ 				m_sub.insert_rows( m_sub.n_rows, m.row(i) );
+	 			chk.push_back( gvar_C(m_sub) );
+ 				remi.push_back( i );
+ 			}
+		}
+		sor = sort_index( Rcpp::as<arma::vec>(wrap(chk)) )(0);
+ 		k = remi[sor];
+		varvec(k) = chk[sor];
+		f(k) = 0;
+		R_CheckUserInterrupt();
+	}
+	return varvec;
+	END_RCPP
+}
+
+double median( NumericVector x ) {
+    int n = x.size();
+  	arma::vec xcopy = arma::sort( Rcpp::as<arma::vec>(wrap(x)) );
+    if(n%2==0) {
+		return (xcopy(n/2) + xcopy(n/2-1))/2 ;
+    } else {
+    	return xcopy(n/2);
+   }
+}
+
+double median( arma::vec x ) {
+    int n = x.size();
+  	arma::vec xsort = arma::sort( x );
+    if(n%2==0) {
+	   	return (xsort(n/2) + xsort(n/2-1))/2 ;
+    } else {
+      	return xsort(n/2);
+   }
+}
+
+double mad( NumericVector x, double constant=1.4826 ){
+	int n = x.size();
+	double center = median(x);
+	NumericVector diff = x - center;
+	NumericVector diff_abs = ifelse(diff<0, -diff, diff);
 	return median(diff_abs)*constant;
 }
 
-
-double mad(arma::vec x, double constant=1.4826){
-	NumericVector X = Rcpp::as<Rcpp::NumericVector>(wrap(x));
-	double output = mad(X);
-	return output;
+double mad( arma::vec x, double constant=1.4826 ){
+	double center = arma::as_scalar(median( x ));
+	arma::vec diff = arma::vec( x.n_elem ); 
+	for( int i = 0; i < x.n_elem; i++ )
+		diff( i ) = fabs( x( i ) - center );
+	return arma::as_scalar( median( diff ) ) * constant;
 }
 
-NumericVector outer_pos(NumericVector x, NumericVector y){
+NumericVector outer_pos( NumericVector x, NumericVector y ){
 	std::vector<double> output;
-	int n=x.size();
+	int n = x.size();
 	double temp;
-	for(int i=0; i<n; i++){
-		for(int j=0; j<n; j++){
-			temp=x[j]-x[i];
-			if(temp>0){
-				output.push_back((y[j]-y[i])/temp);
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < n; j++){
+			temp = x[j] - x[i];
+			if(temp > 0){
+				output.push_back(( y[j] - y[i]) / temp);
 			}
 		}
+		R_CheckUserInterrupt();
 	} 
 	return Rcpp::wrap(output);
 }
 
-double hd_C(NumericVector x, NumericVector q){
-	int n=x.size();
-	double m1=(n+1.0)*q(0), m2=(n+1.0)*(1.0-q(0));
-	double output=0.0;
-	IntegerVector i=seq_len(n);
-	NumericVector i2(n);
-	i2=i*1.0;
-	NumericVector w=pbeta(i2*1.0/n, m1, m2) - pbeta((i2-1.0)/n, m1, m2);
-	NumericVector xcopy=Rcpp::clone<Rcpp::NumericVector>(x);
-	std::sort(xcopy.begin(), xcopy.end());
-	for(int j=0; j<n; j++){
-		output+=(xcopy(j)*w(j));
+NumericVector outer_pos( arma::vec x, arma::vec y ){
+	std::vector<double> output;
+	int n = x.size();
+	double temp;
+	for(int i = 0; i < n; i++){
+		for(int j = 0; j < n; j++){
+			temp = x[j] - x[i];
+			if(temp > 0){
+				output.push_back(( y[j] - y[i]) / temp);
+			}
+		}
+		R_CheckUserInterrupt();
+	} 
+	return Rcpp::wrap(output);
+}
+
+double hd_C( NumericVector x, double q ){
+	int n = x.size();
+	double m1 = ( n + 1.0 ) * q, m2=( n + 1.0 ) * ( 1.0 - q );
+	double output = 0.0;
+	arma::vec xsort = arma::sort( Rcpp::as<arma::vec>(x) );
+	for( int i = 1; i <= n; i++ ){
+		output += (R::pbeta(i*1.0/n, m1, m2, 1, 0) - 
+			       R::pbeta((i-1.0)/n, m1, m2, 1, 0)) * 
+		           xsort(i-1);
 	}
 	return(output);
 }
 
-// [[Rcpp::export]]
-RcppExport SEXP tshd_C(SEXP X, SEXP Y, SEXP hd){
-	NumericVector x(X), y(Y);
-	IntegerVector HD(hd);
-	int n=x.size();
-	IntegerVector ord=order(x);
-	NumericVector x_ord(n), y_ord(n);
-	for(int i=0; i<n; i++){
-		x_ord(i)=x[ord(i)];
-		y_ord(i)=y[ord(i)];	
+double hd_C( arma::vec x, double q ){
+	int n = x.n_elem;
+	double m1 = ( n + 1.0 ) * q, m2=( n + 1.0 ) * ( 1.0 - q );
+	double output = 0.0;
+	arma::vec xsort = arma::sort(x);
+	for( int i = 1; i <= n; i++ ){
+		output += (R::pbeta(i*1.0/n, m1, m2, 1, 0) - 
+			       R::pbeta((i-1.0)/n, m1, m2, 1, 0)) * 
+		           xsort(i-1);
 	}
-	NumericVector v1v2=outer_pos(x_ord, y_ord);
-	int n_s=v1v2.size();	
-	NumericVector coef(2);
-	if(sum(HD)==0){
-		coef(1)=median(v1v2);
-	}else{
-		coef(1)=hd_C(v1v2,wrap(0.5));
-	}
-	NumericVector res=y-coef(1)*x;
-	coef(0)=hd_C(res,wrap(0.5));
-	return coef;
+	return(output);
 }
 
-NumericVector tshd_C(NumericVector x, NumericVector y, IntegerVector HD){
-	int n=x.size();
-	IntegerVector ord=order(x);
-	NumericVector x_ord(n), y_ord(n);
-	for(int i=0; i<n; i++){
-		x_ord(i)=x[ord(i)];
-		y_ord(i)=y[ord(i)];	
-	}
-	NumericVector v1v2=outer_pos(x_ord, y_ord);
-	int n_s=v1v2.size();	
+RcppExport SEXP hd_C( SEXP X, SEXP Q ){
+	BEGIN_RCPP
+	return hd_C( Rcpp::as<Rcpp::NumericVector>( wrap(X) ),
+				 Rcpp::as<Rcpp::NumericVector>( wrap(Q) )
+		);
+	END_RCPP
+}
+
+NumericVector ts_proc( arma::vec x, arma::vec y ){
+	arma::uvec ind = arma::sort_index( x );
+	return outer_pos( x.elem( ind ), y.elem( ind ) );
+}
+
+NumericVector tshd_C( arma::vec x, arma::vec y, bool HD ){
 	NumericVector coef(2);
-	if(sum(HD)==0){
-		coef(1)=median(v1v2);
-	}else{
-		coef(1)=hd_C(v1v2,wrap(0.5));
+	NumericVector v1v2 = ts_proc( x, y );
+	int n_s = v1v2.size();	
+	if( !HD ){
+		coef( 1 ) = median( v1v2 );
+	} else {
+		coef( 1 ) = hd_C( v1v2, 0.5 );
 	}
-	NumericVector res=y-coef(1)*x;
-	coef(0)=hd_C(res,wrap(0.5));
+	coef( 0 ) = hd_C( y - coef(1) * x, 0.5 );
 	return coef;
 }
 
 
-// [[Rcpp::export]]
-RcppExport SEXP pbvar_C(SEXP X, SEXP BETA){
-	NumericVector x(X);
-	NumericVector beta(BETA);
-	int n=x.size();
-	double Median=median(x);
-	NumericVector w=ifelse((x-Median)<=0, -(x-Median), (x-Median));
-	double pbvar;
-	std::sort(w.begin(), w.end());
-	double omega=w[floor((1.0-beta(0))*(n+0.5))-1];
-	if(omega>0.0){
-		double len=0;
-		NumericVector z(n);
-		for(int i=0;i<n;i++){
-			if((x(i)-Median)/omega<= -1.0)
-				z(i)=-1.0;
-			if ((x(i)-Median)/omega>=1.0)
-				z(i)=1.0;
-			if(fabs((x(i)-Median)/omega) < 1.0){
-				z(i)=(x(i)-Median)/omega;
-				len+=1.0;
-			}
-		}
-		double z_sq_sum=0;
-		for(int i=0;i<n;i++){
-			z_sq_sum+=pow(z(i), 2.0);
-		}
-		pbvar=(double)n*pow(omega, 2)*z_sq_sum/pow(len, 2);
-		return wrap(pbvar);
-	} else
-		return wrap(0.0);
+NumericVector tshd_C( NumericVector x, NumericVector y, bool HD ){
+	NumericVector coef(2);
+	NumericVector v1v2 = ts_proc( Rcpp::as<arma::vec>(x), Rcpp::as<arma::vec>(y) );
+	int n_s = v1v2.size();	
+	if(!HD){
+		coef(1) = median(v1v2);
+	}else{
+		coef(1) = hd_C(v1v2, 0.5 );
+	}
+	NumericVector res = y - coef(1)*x;
+	coef(0) = hd_C(res, 0.5 );
+	return coef;
 }
 
-double pbvar_C(NumericVector x, double beta){
-	int n=x.size();
-	double Median=median(x);
-	NumericVector w=ifelse((x-Median)<=0, -(x-Median), (x-Median));
+RcppExport SEXP tshd_C( SEXP X, SEXP Y, SEXP hd ){
+	BEGIN_RCPP
+	return tshd_C( Rcpp::as<arma::vec>( wrap(X) ), 
+				   Rcpp::as<arma::vec>( wrap(Y) ), 
+				   Rcpp::as<bool>( wrap(hd) ) );
+	END_RCPP
+}
+
+
+double pbvar_C( NumericVector x, double beta ){
+	int n = x.size();
+	double Median = median(x);
+	NumericVector w = ifelse( (x-Median)<=0, -(x-Median), (x-Median) );
 	double pbvar;
-	std::sort(w.begin(), w.end());
-	double omega=w[floor((1.0-beta)*(n+0.5))-1];
-	if(omega>0.0){
-		double len=0;
+	std::sort( w.begin(), w.end() );
+	double omega = w[ floor( (1.0 - beta) * n + 0.5 ) - 1 ];
+
+	if( omega > 0.0 ){
+		int len = 0;
+		double z_sq_sum = 0.0, div;
 		NumericVector z(n);
-		for(int i=0;i<n;i++){
-			if((x(i)-Median)/omega<= -1.0)
-				z(i)=-1.0;
-			if ((x(i)-Median)/omega>=1.0)
-				z(i)=1.0;
-			if(fabs((x(i)-Median)/omega) < 1.0){
-				z(i)=(x(i)-Median)/omega;
-				len+=1.0;
+		for( int i = 0; i < n; i++ ){
+			div = ( x(i)-Median )/omega; 
+			if( div <= -1.0 )
+				z(i) = -1.0;
+			else if( div >= 1.0 )
+				z(i) = 1.0;
+			else {
+				z(i) = div;
+				len += 1;
 			}
+			z_sq_sum += pow( z(i), 2.0 );
 		}
-		double z_sq_sum=0;
-		for(int i=0;i<n;i++){
-			z_sq_sum+=pow(z(i), 2.0);
-		}
-		pbvar=(double)n*pow(omega, 2)*z_sq_sum/pow(len, 2);
+		pbvar = (double)n*pow(omega, 2)*z_sq_sum/pow((double)len, 2);
 		return pbvar;
 	} else
 		return 0.0;
 }
 
-// [[Rcpp::export]]
-RcppExport SEXP tsp1reg_C(SEXP X, SEXP Y, SEXP hd){
-	NumericVector x(X), y(Y);
-	IntegerVector HD(hd);
-	int n=x.size();
-	IntegerVector ord=order(x);
-	NumericVector x_ord(n), y_ord(n);
-	for(int i=0; i<n; i++){
-		x_ord(i)=x[ord(i)];
-		y_ord(i)=y[ord(i)];	
+double pbvar_C( arma::vec x, double beta ){
+	int n = x.n_elem;
+	double Median = arma::as_scalar( arma::median(x) );
+	NumericVector w(n);
+	for( int i = 0; i < n; i++ ){
+		w( i ) = fabs( x(i) - Median );
 	}
-	NumericVector v1v2=outer_pos(x_ord, y_ord);
-	int n_s=v1v2.size();	
-	NumericVector coef(2);
-	coef(1)=median(v1v2);
-	if(sum(HD)==0){
-		coef(0)=median(y)-coef(1)*median(x);
-	}else{
-		NumericVector temp1(1), temp2(1);
-		temp1(0)=hd_C(y,wrap(0.5));
-		temp2(0)=hd_C(x,wrap(0.5));
-		coef(0)=temp1(0)-coef(1)*temp2(0);
-	}
-	NumericVector res=y-coef(1)*x-coef(0);
-	return List::create(_["coef"]=coef, _["res"]=res);
+	double pbvar;
+	std::sort( w.begin(), w.end() );
+	double omega = w[ floor( (1.0 - beta) * n + 0.5 ) - 1 ];
+
+	if( omega > 0.0 ){
+		int len = 0;
+		double z_sq_sum = 0.0, div;
+		NumericVector z(n);
+		for( int i = 0; i < n; i++ ){
+			div = ( x(i) - Median )/omega; 
+			if( div <= -1.0 )
+				z(i) = -1.0;
+			else if( div >= 1.0 )
+				z(i) = 1.0;
+			else {
+				z(i) = div;
+				len += 1;
+			}
+			z_sq_sum += pow( z(i), 2.0 );
+		}
+		pbvar = (double)n*pow(omega, 2)*z_sq_sum/pow((double)len, 2);
+		return pbvar;
+	} else
+		return 0.0;
 }
 
 
-// [[Rcpp::export]]
-
-RcppExport SEXP stsregp1_C(SEXP X, SEXP Y){
-	NumericVector x(X), y(Y);
-	int n=x.size();
-	IntegerVector ord=order(x);
-	NumericVector x_ord(n), y_ord(n);
-	for(int i=0; i<n; i++){
-		x_ord(i)=x[ord(i)];
-		y_ord(i)=y[ord(i)];	
-	}
-	NumericVector v1v2=outer_pos(x_ord, y_ord);
-	int n_s=v1v2.size();	
-	NumericVector allvar(n_s);
-	double temp;
-	for(int i=0; i<n_s;i++){
-		temp = pbvar_C(y-v1v2(i)*x, 0.2);
-		allvar(i) = temp;
-		R_CheckUserInterrupt();
-	}
-	IntegerVector b1_id=order(allvar);
-	NumericVector coef(2);
-	coef(1)=v1v2[b1_id(0)];
-	coef(0)=median(y)-coef[1]*median(x);
-	NumericVector res=y-coef(1)*x-coef(0);
-	return List::create(_["coef"]=coef, _["res"]=res);
+RcppExport SEXP pbvar_C( SEXP X, SEXP BETA ){
+	return(wrap(pbvar_C( Rcpp::as<Rcpp::NumericVector>( wrap(X) ),
+			             Rcpp::as<double>( wrap(BETA) ))));
 }
 
 
-NumericVector stsregp1_coef(SEXP X, SEXP Y){
-	NumericVector x(X), y(Y);
-	int n=x.size();
-	IntegerVector ord=order(x);
-	NumericVector x_ord(n), y_ord(n);
-	for(int i=0; i<n; i++){
-		x_ord(i)=x[ord(i)];
-		y_ord(i)=y[ord(i)];	
-	}
-	NumericVector v1v2=outer_pos(x_ord, y_ord);
-	int n_s=v1v2.size();	
-	NumericVector allvar(n_s);
-	for(int i=0; i<n_s;i++){
-		NumericVector temp(pbvar_C(wrap(y-v1v2(i)*x), wrap(0.2)));
-		allvar(i)=temp(0);
-		R_CheckUserInterrupt();
-	}
-	IntegerVector b1_id=order(allvar);
+NumericVector tsp1reg_C( arma::vec x, arma::vec y, bool HD ){
 	NumericVector coef(2);
-	coef(1)=v1v2[b1_id(0)];
-	coef(0)=median(y)-coef[1]*median(x);
+	NumericVector v1v2 = ts_proc( x, y );
+
+	int n_s = v1v2.size();	
+	coef(1) = median( v1v2 );
+	if(!HD)
+		coef(0) = median(y) - coef(1) * median(x);
+	else
+		coef(0)  = hd_C( y, 0.5 ) - coef( 1 ) * hd_C( x, 0.5 );
 	return coef;
 }
 
+RcppExport SEXP tsp1reg_C( SEXP X, SEXP Y, SEXP HD ){
+	BEGIN_RCPP
+	return(wrap(tsp1reg_C( Rcpp::as<arma::vec>( wrap(X) ),
+						   Rcpp::as<arma::vec>( wrap(Y) ),
+			               Rcpp::as<bool>( wrap(HD) ))));
+	END_RCPP
+}
 
-NumericVector tsp1reg_C(NumericVector x, NumericVector y, IntegerVector HD){
-	int n=x.size();
-	IntegerVector ord=order(x);
-	NumericVector x_ord(n), y_ord(n);
-	for(int i=0; i<n; i++){
-		x_ord(i)=x[ord(i)];
-		y_ord(i)=y[ord(i)];	
-	}
-	NumericVector v1v2=outer_pos(x_ord, y_ord);
-	int n_s=v1v2.size();	
+
+List stsregp1_C( arma::vec x, arma::vec y ){
 	NumericVector coef(2);
-	coef(1)=median(v1v2);
-	if(sum(HD)==0){
-		coef(0)=median(y)-coef(1)*median(x);
-	}else{
-		NumericVector temp1(1), temp2(1);
-		temp1(0)=hd_C(y,wrap(0.5));
-		temp2(0)=hd_C(x,wrap(0.5));
-		coef(0)=temp1(0)-coef(1)*temp2(0);
-	}
-	NumericVector res=y-coef(1)*x-coef(0);
-	return coef;
-}
-
-RcppExport SEXP stsreg_for(SEXP X, SEXP Y, SEXP IT){
-	NumericMatrix x(X);
-	NumericVector y(Y);
-	IntegerVector it(IT);
-	int ncols=x.ncol();
-	int nrows=x.nrow();
-	NumericVector temp(ncols);
-	for(int i=0; i<ncols;i++){
-		NumericVector tempcoef=tsp1reg_C(x(_,i), y, wrap(1));
-		temp(i)=tempcoef(1);
-	}
-	arma::colvec res=(Rcpp::as<arma::colvec>(y))
-	              -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp));
-	double alpha=median((Rcpp::as<NumericVector>(wrap(res))));
-//	NumericVector tempold(temp);
-	arma::colvec r(nrows);
-	NumericVector tempcol(nrows);
-	for(int i=0; i<it(0); i++){
-		for(int j=0; j<ncols; j++){
-			tempcol=x(_,j);
-			r=(Rcpp::as<arma::colvec>(y))
-			  -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
-		      -alpha + temp(j)*(Rcpp::as<arma::colvec>(tempcol));
-		    temp(j)=stsregp1_coef(wrap(tempcol), wrap(r))(1);
-		}
-		alpha=median(Rcpp::as<NumericVector>(wrap(((Rcpp::as<arma::colvec>(y))
-					 -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))))));
+	NumericVector v1v2 = ts_proc( x, y );
+	int n_s = v1v2.size();	
+	NumericVector allvar(n_s);
+	for( int i = 0; i < n_s; i++ ){
+		allvar(i) = pbvar_C( y - v1v2(i) * x, 0.2 );
 		R_CheckUserInterrupt();
-//		NumericVector tempold(temp);
 	}
-	res=(Rcpp::as<arma::colvec>(y))
-	    -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
-	    -alpha;
-	return List::create(_["alpha"]=alpha, _["beta"]=temp, _["res"]=res);
+	int b1_id = arma::sort_index(Rcpp::as<arma::vec>(allvar))(0);
+	coef(1) = v1v2( b1_id );
+	coef(0) = arma::as_scalar( arma::median(y) - coef(1) * arma::median(x) );
+	return List::create(_["coef"] = coef, 
+						_["res"] = y - coef( 1 ) * x - coef( 0 ));
 }
 
 
-RcppExport SEXP tshdreg_for(SEXP X, SEXP Y, SEXP IT, SEXP TOL){
-	NumericMatrix x(X);
-	NumericVector y(Y);
-	NumericVector tol(TOL);
-	IntegerVector it(IT);
-	int ncols=x.ncol();
-	int nrows=x.nrow();
-	IntegerVector HD(1);
-	HD(0)=1;
-	NumericVector temp(ncols), tempold(ncols);
-	for(int i=0; i<ncols;i++){
-		temp(i)=tshd_C(x(_,i), y, HD)(1);
-		tempold(i)=temp(i);
+List stsreg_for( arma::mat x, arma::colvec y, int it){
+	int ncols = x.n_cols;
+	int nrows = x.n_rows;
+	NumericVector coef( ncols + 1 ); 
+	arma::colvec temp = arma::colvec( ncols );
+	for( int i = 0; i < ncols; i++ ){
+		temp(i) = tsp1reg_C( arma::conv_to<arma::colvec >::from( x.col(i) ), 
+							 arma::conv_to<arma::vec >::from(y), false )(1);
 	}
-	arma::colvec res=(Rcpp::as<arma::colvec>(y))
-	                 -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp));
-	double alpha=hd_C((Rcpp::as<NumericVector>(wrap(res))), wrap(0.5));
-	std::vector<double> diff(ncols);
-	arma::colvec r(nrows);
-	NumericVector tempcol(nrows);
-	for(int i=0; i<it(0); i++){
-		for(int j=0; j<ncols; j++){
-			tempcol=x(_,j);
-			r=(Rcpp::as<arma::colvec>(y))
-			  -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
-		      -alpha + temp(j)*(Rcpp::as<arma::colvec>(tempcol));
-		    temp(j)=tshd_C(tempcol, Rcpp::as<Rcpp::NumericVector>(wrap(r)), HD)(1);
-			diff[j]=temp(j)-tempold(j);
-			if(diff[j]<0.0) diff[j]=-1.0*diff[j];
-			tempold(j)=temp(j);
+	arma::colvec res = y - x * temp ;
+	coef( 0 ) = arma::as_scalar( arma::median( res ) );
+	NumericVector temp_coef(2);
+	for( int i = 0; i < it; i++ ){
+		for( int j = 0; j < ncols; j++ ){
+		    temp_coef = stsregp1_C( x.col(j), y - x * temp - coef(0) + temp(j) * x.col(j) )(0);
+		    temp( j ) = temp_coef(1);
 		}
+		coef( 0 ) = arma::as_scalar( arma::median( y - x * temp ) );
 		R_CheckUserInterrupt();
-		std::sort(diff.begin(), diff.end());
-		if(diff[diff.size()-1]<tol(0)) break;
-		alpha=hd_C(Rcpp::as<NumericVector>(wrap(((Rcpp::as<arma::colvec>(y))
-					 -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))))), wrap(0.5));
-		NumericVector tempold(clone(temp));
 	}
-	res=(Rcpp::as<arma::colvec>(y))
-	    -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
-	    -alpha;
-	return List::create(_["alpha"]=alpha, _["beta"]=temp, _["res"]=res);
+	res = y - x * temp - coef( 0 );
+
+	for( int i = 0; i < ncols; i++ )
+		coef( i + 1 ) = temp( i ) ;
+	return List::create(_["coef"] = coef, _["res"]=res);
 }
 
 
 
-
-RcppExport SEXP tsreg_for(SEXP X, SEXP Y, SEXP IT, SEXP hd){
-	NumericMatrix x(X);
-	NumericVector y(Y);
-	IntegerVector it(IT);
-	int ncols=x.ncol();
-	int nrows=x.nrow();
-	IntegerVector HD(hd);
-	NumericVector temp(ncols), tempold(ncols);
-	for(int i=0; i<ncols;i++){
-		temp(i)=tsp1reg_C(x(_,i), y, HD)(1);
-		tempold(i)=temp(i);
-	}
-	arma::colvec res=(Rcpp::as<arma::colvec>(y))
-	                 -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp));
-	double alpha;
-	if(sum(HD)==0){
-		alpha=median(res);
+List stsreg_C( arma::mat x, arma::vec y, int it ){
+	if( x.n_cols == 1 ){
+		return stsregp1_C( x.col(0), y );
 	} else {
-		alpha=hd_C((Rcpp::as<NumericVector>(wrap(res))), wrap(0.5));
+		return stsreg_for( x, arma::conv_to<arma::colvec >::from(y), it );
 	}
-	std::vector<double> diff(ncols);
+}
+
+
+RcppExport SEXP stsreg_C( SEXP X, SEXP Y, SEXP IT){
+	BEGIN_RCPP
+	return stsreg_C( Rcpp::as<arma::mat>(wrap(X)), 
+					 Rcpp::as<arma::colvec>(wrap(Y)),
+					 Rcpp::as<int>(wrap(IT)));
+	END_RCPP
+}
+
+
+
+
+List tshdreg_for( arma::mat x, arma::colvec y, int it, double tol, bool HD){
+	int ncols = x.n_cols;
+	int nrows = x.n_rows;
+	arma::colvec temp = arma::colvec( ncols ), tempold = arma::colvec( ncols );
+	NumericVector coef( ncols + 1 );
+
+	for( int i = 0; i < ncols; i++ ){
+		temp( i ) = tshd_C( x.col(i), y, HD )(1);
+		tempold( i ) = temp( i );
+	}
+	arma::colvec res = y - x * temp;
+	coef(0) = hd_C( res,  0.5 );
+	arma::colvec diff = arma::colvec( ncols );
 	arma::colvec r(nrows);
 	NumericVector tempcol(nrows);
-	for(int i=0; i<it(0); i++){
-		for(int j=0; j<ncols; j++){
-			tempcol=x(_, j);
-			r=(Rcpp::as<arma::colvec>(y))
-			  -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
-		      -alpha + temp(j)*(Rcpp::as<arma::colvec>(tempcol));
-		    temp(j)=tsp1reg_C(x(_,j), Rcpp::as<Rcpp::NumericVector>(wrap(r)), HD)(1);
-			tempold(j)=temp(j);
+	
+	for( int i = 0; i < it; i++ ){
+		for( int j=0; j < ncols; j++ ){
+			r = y - x * temp - coef( 0 ) + temp( j )*x.col( j );
+		    temp(j) = tshd_C( x.col( j ), y - x * temp - coef( 0 ) + temp( j )*x.col( j ), HD)(1);
+			
+			diff(j) = temp( j ) - tempold( j );
+			if( diff(j) < 0 )
+				diff(j) = fabs( diff(j) );
+			tempold( j ) = temp( j );
 		}
 		R_CheckUserInterrupt();
-		if(sum(HD)==0){
-			alpha=median(Rcpp::as<NumericVector>(wrap(((Rcpp::as<arma::colvec>(y))
-					 -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))))));
-		} else {
-			alpha=hd_C(Rcpp::as<NumericVector>(wrap(((Rcpp::as<arma::colvec>(y))
-					 -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))))), wrap(0.5));
+		if( arma::max( diff ) < tol ) 
+			break;
+		coef( 0 ) = hd_C( y - x*temp, 0.5 );					
+		for( int j = 0; j < ncols; j++ ){
+			tempold( j ) = temp( j );
 		}
 	}
-	res=(Rcpp::as<arma::colvec>(y))
-	    -(Rcpp::as<arma::mat>(x))*(Rcpp::as<arma::colvec>(temp))
-	    -alpha;
-	return List::create(_["alpha"]=alpha, _["beta"]=temp, _["res"]=res);
+	res = y - x*temp - coef(0);
+	for( int i = 0; i < ncols; i++ )
+		coef( i + 1 ) = temp( i ) ;
+	return List::create( _["coef"] = coef, _["res"] = res );
 }
 
 
 
-
-double sign(double x)
-{
-	 double output;
-	 if (std::isnan(x)) {
-	    	output=NA_REAL;
+List tshdreg_C( arma::mat x, arma::vec y, int it, double tol, bool HD ){
+	if( x.n_cols == 1 ){
+		NumericVector res( x.n_rows ), coef = tshd_C( x.col(0), y, HD );
+		for( int i = 0; i < x.n_rows; i++ )
+			res(i) = y(i) - coef( 1 ) * x(i, 0) - coef(0);
+		return List::create( _["coef"] = coef, _["res"] = res );
 	} else {
-    		output=(((x > 0) ? 1 : ((x == 0)? 0 : -1)));
-    	}
-    return output;
+		return tshdreg_for( x, arma::conv_to<arma::colvec >::from(y), it, tol, HD);
+	}
 }
 
 
-NumericVector unidepth1(NumericVector x, NumericVector y){
-	int nx=x.size();
-	int ny=y.size();
+RcppExport SEXP tshdreg_C( SEXP X, SEXP Y, SEXP IT, SEXP TOL, SEXP HD ){
+	BEGIN_RCPP
+
+	return tshdreg_C( Rcpp::as<arma::mat>(wrap(X)), 
+					  Rcpp::as<arma::colvec>(wrap(Y)),
+					  Rcpp::as<int>(wrap(IT)),
+					  Rcpp::as<double>(wrap(TOL)),
+					  Rcpp::as<bool>(wrap(HD)));
+	END_RCPP
+}
+
+
+
+List tsreg_C( arma::mat x, arma::colvec y, int it, bool HD){
+	int ncols = x.n_cols;
+	int nrows = x.n_rows;
+	arma::colvec temp = arma::colvec( ncols ), tempold = arma::colvec( ncols );
+	NumericVector coef( ncols + 1 );
+
+	for( int i = 0; i < ncols; i++)
+		temp(i) = tsp1reg_C( x.col(i), y, false )(1);
+	
+	arma::colvec res= y - x * temp;
+	if(HD)
+		coef( 0 ) = median( res );
+	else {
+		coef( 0 ) = hd_C( res,  0.5 );
+	}
+	
+	arma::colvec r(nrows);
+	NumericVector tempcol(nrows);
+	for( int i = 0; i < it; i++ ){
+		for( int j = 0; j<ncols; j++){
+		    temp( j ) = tsp1reg_C( x.col(j), y - x*temp - coef(0) + temp(j)*x.col(j), false)(1);
+		}
+		R_CheckUserInterrupt();
+		if( !HD ) 
+			coef( 0 ) = arma::as_scalar( arma::median( y - x*temp ) );
+		else 
+			coef( 0 ) = hd_C( y - x*temp, 0.5 );
+	}
+	res = y = x*temp - coef(0); 
+
+	for( int i = 0; i < ncols; i++ )
+		coef( i + 1 ) = temp( i ) ;
+	return List::create( _["coef"] = coef, _["res"] = res );
+}
+
+
+RcppExport SEXP tsreg_C( SEXP X, SEXP Y, SEXP IT, SEXP HD ){
+	BEGIN_RCPP
+	return tsreg_C( Rcpp::as<arma::mat>(wrap(X)), 
+					Rcpp::as<arma::colvec>(wrap(Y)),
+				    Rcpp::as<int>(wrap(IT)),
+					Rcpp::as<bool>(wrap(HD)));
+	END_RCPP
+}
+
+
+NumericVector unidepth_C(NumericVector x, NumericVector y){
+	int nx = x.size();
+	int ny = y.size();
 	NumericVector output(ny);
-	double pup, pdown;
-	for(int i=0; i<ny; i++){
-		double temp1=0, temp2=0;
-		for(int j=0; j<nx; j++){
-			if(y(i)<=x(j)) temp1+=1;
-			if(y(i)<x(j)) temp2+=1;
+	arma::vec p = arma::vec( 2 );
+	
+	double temp1, temp2;
+	for( int i = 0; i < ny; i++ ){
+		temp1 = 0;
+		temp2 = 0;
+		for( int j = 0; j < nx; j++ ){
+			if( y(i) <= x(j) )
+				temp1 += 1;
+			if( y(i) < x(j) )  
+				temp2 += 1;
 		}
-		pup=temp1/((double)nx);
-		pdown=1-temp2/((double)nx);
-		if(pup<pdown)
-		{	output(i)=pup;  }
-		else output(i)=pdown;
+		p(1) = temp1/( (double)nx );
+		p(0) = 1 - temp2/( (double)nx );
+		output( i ) = arma::as_scalar( arma::min( p ) );
 	} 
 	return output;
 }
 
-NumericVector subsetVec(NumericVector A, int start, int end) {
-  NumericVector B(end-start+1) ;
-  std::copy(A.begin() + start, A.begin() + end+1, B.begin() ) ;
-  return B;
-}
-
-
-RcppExport SEXP fdepthv2_for(SEXP M, SEXP PTS){
-	NumericMatrix pts(PTS);
-	NumericMatrix m(M);
-	int nrows=m.nrow();
-	//IntegerVector mdep_dim(MDEP_DIM);
-	//int mdep_nr=mdep_dim(1), mdep_nc=mdep_dim(0); 
-	int mdep_nc=(nrows*nrows-nrows)/2, mdep_nr=nrows;
-	if(!R_IsNA(pts(0,0))) mdep_nr=pts.nrow();
-	NumericMatrix mdep(mdep_nr, mdep_nc);
-	NumericVector dis_temp;
-	int ic=0;
-	NumericVector B(m.ncol()), BB(m.ncol()), A(m.ncol()), temp(m.ncol());
-	double bot;
-	for(int iall=0; iall<nrows; iall++){
-		for(int i=0; i<nrows; i++){
-			R_CheckUserInterrupt();
-			if(iall<i){
-				ic+=1;
-				//NumericVector B=m(i,_)-m(iall,_);
-				NumericVector dis;
-				B=m(i,_)-m(iall,_);
-				BB=B*B;
-				//NumericVector BB=B*B;
-				//double bot=sum(BB);
-				bot=sum(BB);
-				if(bot!=0.0){
-					if(R_IsNA(pts(0,0))){
-						for(int j=0; j<nrows; j++){
-							//NumericVector A=m(j,_)-m(iall,_);
-							A=m(j,_)-m(iall,_);
-							//NumericVector temp=(sum(A*B)*B)/bot;
-							temp=(sum(A*B)*B)/bot;
-							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
-							//dis_temp.push_back(sum(temp));
-						}
-					}
-					if(!R_IsNA(pts(0,0))){
-						for(int j=0; j<nrows; j++){
-							//NumericVector A=m(j,_)-m(iall,_);
-							A=m(j,_)-m(iall,_);
-							//NumericVector temp=(sum(A*B)*B)/bot;
-							temp=(sum(A*B)*B)/bot;
-							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
-						}
-						for(int j=0; j<pts.nrow(); j++){
-							//NumericVector A=pts(j,_)-m(iall,_);
-							A=pts(j,_)-m(iall,_);
-							//NumericVector temp=(sum(A*B)*B)/bot;
-							temp=(sum(A*B)*B)/bot;
-							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
-						}
-					}
-					//
-					// For ic_th projection, store depths of
-					// points in mdep[ic,]
-					//
-					if(R_IsNA(pts(0,0))){
-						NumericVector unidepth_out=unidepth1(dis, dis);
-						for(int k=0; k<mdep_nr;k++)
-							mdep(k,ic-1)=unidepth_out(k);					
-					} else if(!R_IsNA(pts(0,0))){
-						NumericVector dis_1=subsetVec(dis, 0, nrows-1);
-						NumericVector dis_2=subsetVec(dis, nrows, nrows+pts.nrow()-1);
-						NumericVector unidepth_out=unidepth1(dis_1, dis_2);
-						for(int k=0; k<mdep_nr;k++)
-							mdep(k,ic-1)=unidepth_out(k);					
-					}
-				}
-				if(bot==0.0) {
-					for(int k=0; k<mdep_nr;k++)
-						mdep(k,ic-1)=0.0;					
-				}
-			}
-		}
-	}
-	return(mdep);
-}
+NumericVector unidepth_C(arma::vec x, arma::vec y){
+	int nx = x.n_elem;
+	int ny = y.n_elem;
+	NumericVector output(ny);
+	arma::vec p = arma::vec( 2 );
 	
-RcppExport SEXP fdepthv2_for2(SEXP M, SEXP PTS){
-	NumericMatrix pts(PTS);
-	NumericMatrix m(M);
-	int nrows=m.nrow();
-	//IntegerVector mdep_dim(MDEP_DIM);
-	//int mdep_nr=mdep_dim(1), mdep_nc=mdep_dim(0); 
-	int mdep_nc=(nrows*nrows-nrows)/2, mdep_nr=nrows;
-	if(!R_IsNA(pts(0,0))) mdep_nr=pts.nrow();
-	NumericMatrix mdep(mdep_nr, mdep_nc);
-	NumericVector dis_temp;
-	int ic=0;
-	for(int iall=0; iall<nrows; iall++){
-		for(int i=0; i<nrows; i++){
-			R_CheckUserInterrupt();
-			if(iall<i){
-				ic+=1;
-				NumericVector B=m(i,_)-m(iall,_);
-				NumericVector dis;
-				NumericVector BB=B*B;
-				double bot=sum(BB);
-				if(bot!=0.0){
-					if(R_IsNA(pts(0,0))){
-						for(int j=0; j<nrows; j++){
-							NumericVector A=m(j,_)-m(iall,_);
-							NumericVector temp=(sum(A*B)*B)/bot;
-							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
-							//dis_temp.push_back(sum(temp));
-						}
-					}
-					if(!R_IsNA(pts(0,0))){
-						for(int j=0; j<nrows; j++){
-							NumericVector A=m(j,_)-m(iall,_);
-							NumericVector temp=(sum(A*B)*B)/bot;
-							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
-						}
-						for(int j=0; j<pts.nrow(); j++){
-							NumericVector A=pts(j,_)-m(iall,_);
-							NumericVector temp=(sum(A*B)*B)/bot;
-							dis.push_back(sign(sum(A*B))*pow(sum(pow(temp,2)), 0.5));
-						}
-					}
-					//
-					// For ic_th projection, store depths of
-					// points in mdep[ic,]
-					//
-					if(R_IsNA(pts(0,0))){
-						NumericVector unidepth_out=unidepth1(dis, dis);
-						for(int k=0; k<mdep_nr;k++)
-							mdep(k,ic-1)=unidepth_out(k);					
-					} else if(!R_IsNA(pts(0,0))){
-						NumericVector dis_1=subsetVec(dis, 0, nrows-1);
-						NumericVector dis_2=subsetVec(dis, nrows, nrows+pts.nrow()-1);
-						NumericVector unidepth_out=unidepth1(dis_1, dis_2);
-						for(int k=0; k<mdep_nr;k++)
-							mdep(k,ic-1)=unidepth_out(k);					
-					}
-				}
-				if(bot==0.0) {
-					for(int k=0; k<mdep_nr;k++)
-						mdep(k,ic-1)=0.0;					
-				}
-			}
+	double temp1, temp2;
+	for( int i = 0; i < ny; i++ ){
+		temp1 = 0;
+		temp2 = 0;
+		for( int j = 0; j < nx; j++ ){
+			if( y(i) <= x(j) )
+				temp1 += 1;
+			if( y(i) < x(j) )  
+				temp2 += 1;
 		}
-	}
-	return(mdep);
-}
-
-NumericVector idealf(NumericVector x){
-	NumericVector xcopy=Rcpp::clone(x), output(2);
-	int n=xcopy.size();
-	int j=floor((double)n/4.0 + 5.0/12.0)-1;
-	std::sort(xcopy.begin(), xcopy.end());
-	double g=n/4.0-j-1+5.0/12.0;
-	int k=n-j-1;
-	output(0)=(1.0-g)*xcopy(j)+g*xcopy(j+1);
-	output(1)=(1.0-g)*xcopy(k)+g*xcopy(k-1);
+		p(1) = temp1/( (double)nx );
+		p(0) = 1 - temp2/( (double)nx );
+		output( i ) = arma::as_scalar( arma::min( p ) );
+	} 
 	return output;
 }
 
 
-RcppExport SEXP mahalanobis(SEXP X, SEXP CENTER, SEXP COV){
+RcppExport SEXP unidepth_C( SEXP X, SEXP Y ){
 	BEGIN_RCPP
-	arma::mat x = Rcpp::as<arma::mat>(X);
-	arma::mat center = Rcpp::as<arma::mat>(CENTER);
-	arma::mat covs = Rcpp::as<arma::mat>(COV);
-	int n = x.n_rows, ngrp = x.n_cols;
-	arma::vec mdis(n);
-	arma::mat x_i=mat(ngrp, 1);
-	arma::mat xt = x.t();
-	arma::mat Y;
-	for (int i=0; i<n; i++){
-		x_i = xt.col(i) - center;
-		Y = arma::solve( covs, x_i );
-		mdis(i) = arma::as_scalar(x_i.t() * Y);
-	}
-	return(wrap(mdis));
+	return unidepth_C( Rcpp::as<Rcpp::NumericVector>(wrap(X)), 
+					   Rcpp::as<Rcpp::NumericVector>(wrap(Y)) );
 	END_RCPP
 }
 
-NumericVector mahalanobis(NumericMatrix X, NumericMatrix CENTER, NumericMatrix COV){
-	BEGIN_RCPP
-	arma::mat x = Rcpp::as<arma::mat>(X);
-	arma::mat center = Rcpp::as<arma::mat>(CENTER);
-	arma::mat covs = Rcpp::as<arma::mat>(COV);
-	int n = x.n_rows, ngrp = x.n_cols;
-	arma::vec mdis(n);
-	arma::mat x_i=mat(ngrp, 1);
-	arma::mat xt = x.t();
-	arma::mat Y;
-	for (int i=0; i<n; i++){
-		x_i = xt.col(i) - center;
-		Y = arma::solve( covs, x_i );
-		mdis(i) = arma::as_scalar(x_i.t() * Y);
+NumericVector subsetVec(NumericVector A, int start, int end) {
+	NumericVector B( end - start + 1 ) ;
+	std::copy( A.begin() + start, A.begin() + end+1, B.begin() ) ;
+	return B;
+}
+
+
+double sign(double x){
+    return (((x > 0) ? 1 : ((x == 0)? 0 : -1)));
+}
+
+
+NumericVector fdepthv2_C( NumericMatrix m, int nrows_orig ){
+	int nrows = nrows_orig, dis_len = m.nrow(), ic = 0;
+	int mdep_nc = ( nrows * nrows - nrows )/2, mdep_nr = nrows;
+
+	if( m.nrow() > nrows_orig ){
+		mdep_nr = m.nrow() - nrows_orig;	
 	}
-	return(wrap(mdis));
+
+	NumericMatrix mdep( mdep_nr , mdep_nc);
+	NumericVector dis_temp, dis1_1, dis_2, unidepth_out( mdep_nr );
+	NumericVector B(m.ncol()), BB(m.ncol()), A(m.ncol()), temp(m.ncol());
+	arma::vec dis = arma::vec( dis_len );
+	double bot;
+
+	for( int iall = 0; iall < nrows; iall++ ){
+		R_CheckUserInterrupt();
+		for( int i = 0; i < nrows; i++ ){
+			if( iall < i ){
+				ic += 1;
+				B = m(i,_) - m(iall,_);
+				BB = B * B;
+				bot = sum( BB );
+				if( bot != 0.0 ){
+					if( nrows == m.nrow() ){
+						for( int j = 0; j < nrows; j++){
+							A = m(j,_) - m(iall,_);
+							temp = ( sum( A * B ) * B )/bot;
+							dis( j ) = sign( sum( A*B ) )*pow( sum( pow(temp,2) ), 0.5 );
+						}
+						unidepth_out = unidepth_C( dis, dis );
+						for( int k = 0; k < mdep_nr; k++)
+							mdep( k, ic - 1 ) = unidepth_out( k );	
+					} else {
+						for( int j = 0; j < m.nrow(); j++ ){
+							A = m( j,_ ) - m( iall, _ );
+							temp = ( sum( A * B ) * B )/bot;
+							dis( j ) = sign( sum( A*B ) )*pow( sum( pow(temp,2) ), 0.5 );
+						}
+						unidepth_out = unidepth_C( dis.subvec( 0, nrows-1 ), 
+							  				  	   dis.subvec( nrows, nrows + mdep_nr -1 ));
+						for( int k = 0; k < mdep_nr; k++ )
+							mdep( k, ic - 1 ) = unidepth_out( k );
+					}
+				} else {
+					for( int k = 0; k < mdep_nr; k++)
+						mdep( k, ic-1 ) = 0.0;					
+				}
+			}
+		}
+	}
+	return mdep ;
+}
+	
+
+RcppExport SEXP fdepthv2_C( SEXP M, SEXP NO ){
+	BEGIN_RCPP	
+	return fdepthv2_C( Rcpp::as<Rcpp::NumericMatrix>( wrap(M) ),
+			 		   Rcpp::as<int>( wrap(NO) )); 
 	END_RCPP
 }
+
+NumericVector idealf(NumericVector x){
+	NumericVector xcopy = Rcpp::clone(x), output(2);
+	int n = xcopy.size();
+	int j = floor( (double)n/4.0 + 5.0/12.0 ) - 1;
+	std::sort( xcopy.begin(), xcopy.end() );
+	double g = n/4.0 - j - 1 + 5.0/12.0;
+	int k = n - j - 1;
+	output(0) = (1.0 - g) * xcopy( j ) + g * xcopy( j + 1 );
+	output(1) = (1.0 - g) * xcopy( k ) + g * xcopy( k - 1 );
+	return output;
+}
+
+
 
  arma::mat mahalanobis(arma::mat x, arma::mat center, arma::mat covs){
 	int n = x.n_rows, ngrp = x.n_cols;
 	arma::vec mdis(n);
-	arma::mat x_i=mat(ngrp, 1);
+	arma::mat x_i = mat(ngrp, 1);
 	arma::mat xt = x.t();
 	arma::mat Y;
-	for (int i=0; i<n; i++){
+	for ( int i = 0; i < n; i++ ){
 		x_i = xt.col(i) - center;
 		Y = arma::solve( covs, x_i );
 		mdis(i) = arma::as_scalar(x_i.t() * Y);
@@ -776,83 +715,30 @@ NumericVector mahalanobis(NumericMatrix X, NumericMatrix CENTER, NumericMatrix C
 	return(mdis);
 }
 
-
-
-RcppExport SEXP rmba(SEXP X, SEXP Csteps){
-	//Computes the reweighted MBA estimator
-	//Original R code provided by David Olive
-	//int p = X.ncol(), n = X.nrow();
-	arma::mat x = Rcpp::as<arma::mat>(X);
-	IntegerVector csteps(Csteps);
-	int n = x.n_rows, p = x.n_cols;
-	arma::mat covs = arma::cov(x);
-	arma::mat mns = mean(x, 0);
-	arma::vec md2 = vec(n);
-	double medd2 = 0.0;
-	for(int i=0; i<csteps(0); i++){
-		md2 = mahalanobis(x, mns.t(), covs);
-		medd2 = arma::as_scalar(arma::median(md2));
-		mns = arma::mean( x.rows(find(md2 <= medd2 ) ));
-		covs = arma::cov( x.rows(find(md2 <= medd2 ) ));	
-	}
-	arma::mat covb = covs(span::all, span::all);
-	arma::mat mnb = mns(span::all, span::all);
-	double critb = arma::as_scalar(prod(diagvec(chol(covb))));
-	arma::mat covv = eye(p, p);
-	arma::mat med = median(x, 0);
-	md2 = mahalanobis(x, med.t(), covv);
-	medd2 = arma::as_scalar(arma::median(md2));
-	mns = arma::mean( x.rows(find(md2 <= medd2 ) ));
-	covs = arma::cov( x.rows(find(md2 <= medd2 ) ));	
-	for(int i=0; i<csteps(0); i++){
-		md2 = mahalanobis(x, mns.t(), covs);
-		medd2 = arma::as_scalar(arma::median(md2));
-		mns = arma::mean( x.rows(find(md2 <= medd2 ) ));
-		covs = arma::cov( x.rows(find(md2 <= medd2 ) ));	
-	}
-	double crit = arma::as_scalar(prod(diagvec(chol(covs))));
-	if( crit < critb ){
-		critb = crit;
-		covb = covs;
-		mnb = mns;
-	}
-	arma::vec rd2 = mahalanobis(x, mnb.t(), covb);
-	double Const = (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
-	covb = Const * covb;
-	double up = R::qchisq(0.975, (double)p, 1, 0);
-	arma::mat rmnb = arma::mean( x.rows(find(rd2 <= up)) );
-	arma::mat rcovb = arma::cov( x.rows(find(rd2 <= up)) );
-	rd2 = mahalanobis(x, rmnb.t(), rcovb);
-	Const = (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
-	rcovb = Const * rcovb;
-	rd2 = mahalanobis(x, rmnb.t(), rcovb);
-
-	rmnb = arma::mean( x.rows(find(rd2 <= up)) );
-	rcovb = arma::cov( x.rows(find(rd2 <= up)) );
-	rd2 = mahalanobis(x, rmnb.t(), rcovb);	
-	Const = (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
-	rcovb = Const * rcovb;
-	return List::create( _["center"] = rmnb, _["cov"] = rcovb );
+arma::mat mahalanobis(NumericMatrix X, NumericMatrix CENTER, NumericMatrix COV){
+	return mahalanobis( Rcpp::as<arma::mat>( wrap(X) ),
+						Rcpp::as<arma::mat>( wrap(CENTER) ),
+						Rcpp::as<arma::mat>( wrap(COV) ));
 }
 
 
-
-List rmba(NumericMatrix X, IntegerVector csteps){
+List rmba(arma::mat x, int csteps){
 	//Computes the reweighted MBA estimator
 	//Original R code provided by David Olive
 	//int p = X.ncol(), n = X.nrow();
-	arma::mat x 	= Rcpp::as<arma::mat>(X);
 	int n 			= x.n_rows, p = x.n_cols;
 	arma::mat covs 	= arma::cov(x);
 	arma::mat mns 	= mean(x, 0);
 	arma::vec md2 	= vec(n);
 	double medd2 	= 0.0;
-	for(int i=0; i<csteps(0); i++){
+
+	for(int i = 0; i < csteps; i++){
 		md2 		= mahalanobis(x, mns.t(), covs);
 		medd2 		= arma::as_scalar(arma::median(md2));
 		mns 		= arma::mean( x.rows(find(md2 <= medd2 ) ));
 		covs 		= arma::cov( x.rows(find(md2 <= medd2 ) ));	
 	}
+
 	arma::mat covb 	= covs(span::all, span::all);
 	arma::mat mnb 	= mns(span::all, span::all);
 	double critb 	= arma::as_scalar(prod(diagvec(chol(covb))));
@@ -862,18 +748,22 @@ List rmba(NumericMatrix X, IntegerVector csteps){
 	medd2 			= arma::as_scalar(arma::median(md2));
 	mns 			= arma::mean( x.rows(find(md2 <= medd2 ) ));
 	covs 			= arma::cov( x.rows(find(md2 <= medd2 ) ));	
-	for(int i=0; i<csteps(0); i++){
+
+	for( int i = 0; i < csteps; i++ ){
 		md2 		= mahalanobis(x, mns.t(), covs);
 		medd2 		= arma::as_scalar(arma::median(md2));
 		mns 		= arma::mean( x.rows(find(md2 <= medd2 ) ));
 		covs 		= arma::cov( x.rows(find(md2 <= medd2 ) ));	
 	}
+
 	double crit = arma::as_scalar(prod(diagvec(chol(covs))));
+
 	if( crit < critb ){
 		critb 		= crit;
 		covb 		= covs;
 		mnb 		= mns;
 	}
+
 	arma::vec rd2 	= mahalanobis(x, mnb.t(), covb);
 	double Const 	= (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
 	covb 			= Const * covb;
@@ -889,40 +779,49 @@ List rmba(NumericMatrix X, IntegerVector csteps){
 	rd2 			= mahalanobis(x, rmnb.t(), rcovb);	
 	Const 			= (arma::as_scalar(arma::median(rd2)))/(R::qchisq(0.5, (double)p, 1, 0));
 	rcovb 			= Const * rcovb;
+	
 	return List::create( _["center"] = rmnb, _["cov"] = rcovb );
 }
 
+NumericVector idealf(arma::vec x){
+	NumericVector output(2);
+	int n = x.n_elem;
+	int j = floor( (double)n/4.0 + 5.0/12.0 ) - 1;
+	arma::vec xsort = arma::sort( x );
+	double g = n/4.0 - j - 1 + 5.0/12.0;
+	int k = n - j - 1;
+	output(0) = (1.0 - g) * xsort( j ) + g * xsort( j + 1 );
+	output(1) = (1.0 - g) * xsort( k ) + g * xsort( k - 1 );
+	return output;
+}
 
-RcppExport SEXP outpro_for(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM){
-	NumericMatrix m(M);
-	int nrows=m.nrow();
-	NumericVector gval(GVAL), center(CENTER);
-	LogicalVector mm(MM);
-	NumericVector outid; 
+LogicalVector outpro_for(NumericMatrix m, NumericVector gval, NumericVector center, bool mm ){
+	int nrows = m.nrow();
+	NumericVector outid, B(m.ncol()), A(m.ncol()), temp(m.ncol()), BB(m.ncol()), temp_idealf(2);
 	LogicalVector flag(nrows, false);
-	NumericVector B(m.ncol()), A(m.ncol()), temp(m.ncol()), BB(m.ncol()), temp_idealf(2);
+	arma::vec dis = arma::vec( nrows );
+	double bot;
 
-	for(int i=0; i<nrows; i++){
+	double cu;
+	for( int i = 0; i < nrows; i++ ){
 		R_CheckUserInterrupt();
-		B  = m(i,_)-center;
-		BB = B*B;
-		NumericVector dis(nrows);
-		double bot = sum(BB); 
-		R_CheckUserInterrupt();
-		if(bot!=0){
-			for(int j=0;j<nrows;j++){
-				A = m(j,_)-center;
-				temp = sum(A*B)*B/bot;
-				dis(j) = pow(sum(temp*temp), 0.5);
+		B  = m(i,_) - center;
+		BB = B * B;
+		bot = sum(BB); 
+
+		if( bot != 0){
+			for(int j = 0; j < nrows; j++ ){
+				A = m(j,_) - center;
+				temp = sum( A*B)*B/bot;
+				dis(j) = pow( sum( temp * temp ), 0.5 );
 			}
-			temp_idealf=idealf(dis);
-			double cu;
-			if(!mm(0))
-				cu=median(dis)+gval(0)*(temp_idealf(1)-temp_idealf(0));
-			else if(mm(0))
-				cu=median(dis)+gval(0)*mad(dis);
-			for(int k=0; k<nrows; k++){
-				if(dis(k)>cu)
+			temp_idealf = idealf(dis);
+			if( !mm )
+				cu = arma::as_scalar(arma::median( dis )) + gval(0) * ( temp_idealf(1) - temp_idealf(0) );
+			else
+				cu = arma::as_scalar(arma::median( dis )) + gval(0) * mad(dis);
+			for( int k = 0; k < nrows; k++ ){
+				if( dis(k) > cu)
 					flag(k)=true;
 			}
 		}
@@ -930,6 +829,15 @@ RcppExport SEXP outpro_for(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM){
 	return(wrap(flag));
 }
 
+
+RcppExport SEXP outpro_for( SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM ){
+	BEGIN_RCPP	
+	return outpro_for( Rcpp::as<Rcpp::NumericMatrix>(wrap(M)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(GVAL)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(CENTER)),
+					 Rcpp::as<bool>(wrap(MM)));
+	END_RCPP
+}
 
 
 double depths1( double m, double j ){
@@ -946,17 +854,15 @@ double depths1( double m, double j ){
 	return dep;
 }
 
-RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
-	NumericMatrix m(M); 
-	NumericVector UU(U), VV(V), alpha;
-	IntegerVector fv;
-	double u = UU(0), v = VV(0);
-	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
-	double p2 = p*2.0, eps = 0.000001;
+
+double depth( double u, double v, NumericMatrix m ){
+	std::vector<double> alpha;
+	std::vector<int> fv;
+	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0), p2 = p*2.0, eps = 0.000001, dv;
 	int n = m.nrow(), nt = 0;
+
 	for( int i=0; i < n; i++ ){
-		double dv = ( m(i, 0) - u )*( m(i, 0) - u ) + ( m(i, 1) - v )*( m(i, 1) - v );
-		dv = pow(dv, 0.5);
+		dv = pow( ( m(i, 0) - u )*( m(i, 0) - u ) + ( m(i, 1) - v )*( m(i, 1) - v ), 0.5 );
 		if( dv <= eps ){
 			nt += 1;
 		}else{
@@ -964,8 +870,8 @@ RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
 			if( fabs(xu) > fabs(yu) ){
 				if( m(i,0) >= u ){
 					alpha.push_back( asin(yu) );
-					if( alpha( alpha.size()-1 ) < 0.0 ){
-						alpha( alpha.size()-1 ) += p2;
+					if( alpha[ alpha.size()-1 ] < 0.0 ){
+						alpha[ alpha.size()-1 ] += p2;
 					} 
 				}else {
 					alpha.push_back( p - asin( yu ) );
@@ -977,8 +883,8 @@ RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
 					alpha.push_back( p2 - acos(xu) );
 				}
 			}
-			if( alpha( alpha.size()-1 ) >= (p2 - eps) ){
-				alpha( alpha.size()-1 ) = 0.0;
+			if( alpha[ alpha.size()-1 ] >= (p2 - eps) ){
+				alpha[ alpha.size()-1 ] = 0.0;
 			}
 		}
 	}
@@ -988,12 +894,12 @@ RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
 				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
 				depths1( (double)nt, 3 );
 		numh += nt;
-		return(wrap( numh/n ));
+		return numh/n ;
 	}
 	std::sort( alpha.begin(), alpha.end() );
-	double angle = alpha(0) - alpha( alpha.size()-1 ) + p2;
+	double angle = alpha[0] - alpha[ alpha.size()-1 ] + p2;
 	for( int i=1; i<nn; i++ ){
-		double dif = (alpha(i) - alpha(i-1));  
+		double dif = (alpha[i] - alpha[i-1]);  
 		if( angle < dif )
 			angle = dif;
 	}
@@ -1002,166 +908,13 @@ RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
 				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
 				depths1( (double)nt, 3 );
 		numh += nt;
-		return(wrap( numh/n ));
+		return numh/n ;
 	}
-	angle = alpha(0);
+	angle = alpha[0];
 	int nu = 0;
 	for( int i=0; i<nn; i++ ){
-		alpha(i) = alpha(i) - angle;
-		if( alpha(i) < (p - eps) ){
-			nu += 1;
-		}
-	}
-	if( nu >= nn ){
-		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-				depths1( (double)nt, 3 );
-		//if( n >=3 ){
-		//	sdep = nums/depths1( double(n), 3.0 );
-		//}
-		numh += nt;
-		return(wrap( numh/n ));
-	}
-
-//  Mergesort the alpha with their antipodal angles beta and at the same time update I, F(I), and NBAD.
-	int ja = 1, jb = 1, nn2 = nn*2, nbad = 0, I = nu, nf = nn;
-	double alphk = alpha(0), betak = alpha(nu) - p;
-	IntegerVector fv_id;
-	for( int i=0; i<nn2; i++ ){
-		double add = alphk + eps;
-		if ( add < betak ){
-			nf += 1;
-			if( ja < nn ){
-				ja += 1;
-				alphk = alpha(ja - 1);
-			} else {
-				alphk = p2 + 1.0;
-			}
-		} else {
-			I += 1;
-			int nn1 = nn + 1;
-			if( I == nn1 ){
-				I = 1;
-				nf = nf - nn;
-			}
-			fv.push_back(nf);
-			fv_id.push_back(I-1);
-			int nfi = nf - I;
-			nbad += (int)depths1( (double)nfi, 2.0 );
-			if( jb < nn ){
-				jb += 1;
-				if( (jb + nu) <= nn ){
-					betak = alpha( jb + nu - 1 ) - p;
-				} else {
-					betak = alpha( jb + nu - nn - 1 ) + p;
-				}
-			} else {
-				betak = p2 + 1.0;
-			}
-		}
-	}
-	// Computation of numh for halfspace depth.
-	int gi = 0;
-	ja = 1;
-	arma::vec fv2( fv.size() );
-	for( int i=0; i < fv.size(); i++ ){
-		fv2( fv_id(i) ) = fv(i);
-	}
-	arma::uvec fv_id2 = sort_index( Rcpp::as<arma::vec>(fv_id) );
-	angle = alpha(0);
-	int dif = nn - fv2(0);
-	NumericVector numh_temp(2);
-	numh_temp(0) = fv2(0)*1.0;
-	numh_temp(1) = dif*1.0;
-	numh = min(numh_temp);
-	for( int i=1; i < nn; i++ ){
-		double aeps = angle + eps;
-		if( alpha(i) <= aeps ){
-			ja += 1;
-		} else {
-			gi += ja;
-			ja = 1;
-			angle = alpha(i);
-		}
-		int ki = fv2(i) - gi;
-		int nnki = nn - ki;
-		if( ki >= nnki ){
-			ki = nnki;
-		}
-		if( numh >= ki )
-			numh = ki;
-	}
-	nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-			depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-			depths1( (double)nt, 3 );
-	numh = numh + nt;
-	return( wrap(numh/n) );
-}
-
-
-double depth(double u, double v, NumericMatrix m){
-	NumericVector alpha;
-	IntegerVector fv;
-	double nums = 0.0, numh = 0.0, sdep = 0.0, p = acos(-1.0);
-	double p2 = p*2.0, eps = 0.000001;
-	int n = m.nrow(), nt = 0;
-	double xu, yu;
-	for( int i=0; i < n; i++ ){
-		double dv = ( m(i, 0) - u )*( m(i, 0) - u ) + ( m(i, 1) - v )*( m(i, 1) - v );
-		dv = pow(dv, 0.5);
-		if( dv <= eps ){
-			nt += 1;
-		}else{
-			xu = (m(i, 0) - u)/dv;
-			yu = (m(i, 1) - v)/dv;
-			if( fabs(xu) > fabs(yu) ){
-				if( m(i,0) >= u ){
-					alpha.push_back( asin(yu) );
-					if( alpha( alpha.size()-1 ) < 0.0 ){
-						alpha( alpha.size()-1 ) += p2;
-					} 
-				}else {
-					alpha.push_back( p - asin( yu ) );
-				}
-			} else {
-				if( m(i, 1) >= v ){
-					alpha.push_back( acos(xu) );
-				} else {
-					alpha.push_back( p2 - acos(xu) );
-				}
-			}
-			if( alpha( alpha.size()-1 ) >= (p2 - eps) ){
-				alpha( alpha.size()-1 ) = 0.0;
-			}
-		}
-	}
-	int nn = n - nt;
-	if( nn <= 1 ){
-		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-				depths1( (double)nt, 3 );
-		numh += nt;
-		return( numh/n );
-	}
-	std::sort( alpha.begin(), alpha.end() );
-	double angle = alpha(0) - alpha( alpha.size()-1 ) + p2;
-	for( int i=1; i<nn; i++ ){
-		double dif = (alpha(i) - alpha(i-1));  
-		if( angle < dif )
-			angle = dif;
-	}
-	if( angle > (p + eps) ){
-		nums += depths1( (double)nt, 1.0 )*depths1( (double)nn, 2.0 ) +
-				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
-				depths1( (double)nt, 3 );
-		numh += nt;
-		return( numh/n );
-	}
-	angle = alpha(0);
-	int nu = 0;
-	for( int i=0; i<nn; i++ ){
-		alpha(i) = alpha(i) - angle;
-		if( alpha(i) < (p - eps) ){
+		alpha[i] = alpha[i] - angle;
+		if( alpha[i] < (p - eps) ){
 			nu += 1;
 		}
 	}
@@ -1170,25 +923,27 @@ double depth(double u, double v, NumericMatrix m){
 				depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
 				depths1( (double)nt, 3 );
 		numh += nt;
-		return( numh/n );
+		return numh/n ;
 	}
+
 //  Mergesort the alpha with their antipodal angles beta and at the same time update I, F(I), and NBAD.
-	int ja = 1, jb = 1, nn2 = nn*2, nbad = 0, I = nu, nf = nn;
-	double alphk = alpha(0), betak = alpha(nu) - p, add;
-	IntegerVector fv_id;
+	int ja = 1, jb = 1, nn2 = nn*2, nbad = 0, I = nu, nf = nn, nn1;
+	double alphk = alpha[0], betak = alpha[nu] - p, add;
+	std::vector<int> fv_id;
+
 	for( int i=0; i<nn2; i++ ){
 		add = alphk + eps;
 		if ( add < betak ){
 			nf += 1;
 			if( ja < nn ){
 				ja += 1;
-				alphk = alpha(ja - 1);
+				alphk = alpha[ja - 1];
 			} else {
 				alphk = p2 + 1.0;
 			}
 		} else {
 			I += 1;
-			int nn1 = nn + 1;
+			nn1 = nn + 1;
 			if( I == nn1 ){
 				I = 1;
 				nf = nf - nn;
@@ -1200,24 +955,24 @@ double depth(double u, double v, NumericMatrix m){
 			if( jb < nn ){
 				jb += 1;
 				if( (jb + nu) <= nn ){
-					betak = alpha( jb + nu - 1 ) - p;
+					betak = alpha[ jb + nu - 1 ] - p;
 				} else {
-					betak = alpha( jb + nu - nn - 1 ) + p;
+					betak = alpha[ jb + nu - nn - 1 ] + p;
 				}
 			} else {
 				betak = p2 + 1.0;
 			}
 		}
 	}
-	// Computation of numh for halfspace depth.
 	int gi = 0;
 	ja = 1;
 	arma::vec fv2( fv.size() );
+
 	for( int i=0; i < fv.size(); i++ ){
-		fv2( fv_id(i) ) = fv(i);
+		fv2( fv_id[i] ) = fv[i];
 	}
-	arma::uvec fv_id2 = sort_index( Rcpp::as<arma::vec>(fv_id) );
-	angle = alpha(0);
+	//arma::uvec fv_id2 = sort_index( Rcpp::as<arma::vec>(fv_id) );
+	angle = alpha[0];
 	int dif = nn - fv2(0);
 	NumericVector numh_temp(2);
 	numh_temp(0) = fv2(0)*1.0;
@@ -1225,14 +980,14 @@ double depth(double u, double v, NumericMatrix m){
 	numh = min(numh_temp);
 	for( int i=1; i < nn; i++ ){
 		double aeps = angle + eps;
-		if( alpha(i) <= aeps ){
+		if( alpha[i] <= aeps ){
 			ja += 1;
 		} else {
 			gi += ja;
 			ja = 1;
-			angle = alpha(i);
+			angle = alpha[i];
 		}
-		int ki = fv2(i) - gi;
+		int ki = fv2[i] - gi;
 		int nnki = nn - ki;
 		if( ki >= nnki ){
 			ki = nnki;
@@ -1244,105 +999,26 @@ double depth(double u, double v, NumericMatrix m){
 			depths1( (double)nt, 2.0 )*depths1( (double)nn, 1.0 ) +
 			depths1( (double)nt, 3 );
 	numh = numh + nt;
-	return( numh/n );
+	return numh/n ;
 }
 
 
-RcppExport SEXP outpro_C(SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM, SEXP COP, SEXP TR, SEXP Q){
+RcppExport SEXP depth(SEXP U, SEXP V, SEXP M){
 	BEGIN_RCPP
-	arma::mat m = Rcpp::as<arma::mat>(M);
-	NumericVector gval(GVAL), center(CENTER), tr(TR), q(Q);
-	IntegerVector cop(COP);
-	int nv = m.n_rows, nc = m.n_cols;
-	LogicalVector mm(MM), flag(nv, false);  
 
-	IntegerVector outid, keepid; 
-	if(nc == 1){
-		double Med = median( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
-		double Mad = mad ( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
-		NumericVector dis( nv );
-		double crit = pow( R::qchisq( 0.975, 1, 1, 0 ), 0.5 );
-		for( int i = 0; i < nv; i++ ){
-			dis(i) = ( m(i, 0) - Med )*( m(i, 0) - Med )/( Mad*Mad );
-			dis(i) = pow( dis(i), 0.5);
-			if( dis(i) > crit ){
-				outid.push_back(i);
-			} else {
-				keepid.push_back(i);
-			}
-		}
-	}
-	if( nc > 1 ){
-		if( R_IsNA(gval(0)) && cop(0) == 1 )
-			gval(0) = pow( R::qchisq(0.95, (double)nc, 1, 0), 0.5 );
-		if( R_IsNA(gval(0)) && cop(0) != 1 )
-			gval(0) = pow( R::qchisq(0.975, (double)nc, 1, 0), 0.5 );
-		if( cop(0) == 1 && R_IsNA(center(0)) ){
-			if( nc == 2 ){
-				NumericVector tempd( nv );
-				for( int i = 0; i < nv; i++ ){
-					tempd(i) = depth( m(i, 0), m(i, 1), Rcpp::as<Rcpp::NumericMatrix>(wrap(m)) );
-				}
-				double mdep = *std::max_element( tempd.begin(), tempd.end() );
-				arma::uvec flag = find( Rcpp::as<arma::vec>(tempd) == mdep );
-				if( flag.n_elem == 1 ){
-					center = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) )(flag(0), _);
-				} else if( flag.n_elem > 1 ){
-					center = Rcpp::as<Rcpp::NumericVector>( wrap( mean( m.rows(flag) ) ));
-				}
-			}
-		}
-		if( cop(0) == 3 && R_IsNA(center(0)) )
-			center = Rcpp::as<Rcpp::NumericMatrix>(wrap(arma::median( m )))(0,_);
-		if( cop(0) == 6 && R_IsNA(center(0)) ){
-			center = rmba( Rcpp::as<Rcpp::NumericMatrix>(wrap( m )), 5)(0);
-		}
-		NumericMatrix m2 = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) );
-		NumericVector B(nc), A(nc), BB(nc), temp(nc), temp_idealf(2);
-		double bot;
-		for( int i=0; i < nv; i++ ){
-			B = m2(i,_) - center;
-			BB = B*B;
-			NumericVector dis(nv);
-			bot = sum(BB); 
-			if(bot!=0){
-				for( int j=0; j<nv; j++ ){
-					A = m2(j,_) - center;
-					temp = sum( A*B )*B/bot;
-					dis(j)=pow(sum( temp*temp ), 0.5);
-				}
-				temp_idealf=idealf(dis);
-				double cu;
-				if( !mm(0) )
-					cu = median( dis ) + gval( 0 )*( temp_idealf( 1 ) - temp_idealf( 0 ) );
-				else if( mm(0) )
-					cu = median( dis ) + gval( 0 )*mad( dis );
-				for( int k=0; k < nv; k++ ){
-					if( dis(k) > cu )
-						flag(k) = true;
-				}
-			}
-		}		
-		for( int i=0; i < nv; i++ ){
-			if(flag(i))
-				outid.push_back(i);
-			else
-				keepid.push_back(i);
-		}
-	}
-	return List::create(_["outid"] = outid, _["keepid"] = keepid);
+	return(wrap(depth( Rcpp::as<double>( wrap( U ) ),
+			           Rcpp::as<double>( wrap( V ) ),
+				       Rcpp::as<NumericMatrix>( wrap( M ) ))));
 	END_RCPP
 }
 
 
-
-
-IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center, 
-	          			LogicalVector mm, IntegerVector cop, NumericVector tr, NumericVector q){
+IntegerVector outpro_C(NumericMatrix M, NumericVector center, bool mm, 
+	                   int cop, double tr, double q, double gval=NA_REAL){
 	arma::mat m = Rcpp::as<arma::mat>(M);
 	int nv = m.n_rows, nc = m.n_cols;
 	LogicalVector flag(nv, false);  
-	IntegerVector outid, keepid; 
+	std::vector<int> outid, keepid; 
 	if(nc == 1){
 		double Med = median( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
 		double Mad = mad ( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
@@ -1359,11 +1035,11 @@ IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center
 		}
 	}
 	if( nc > 1 ){
-		if( R_IsNA(gval(0)) && cop(0) == 1 )
-			gval(0) = pow( R::qchisq(0.95, (double)nc, 1, 0), 0.5 );
-		if( R_IsNA(gval(0)) && cop(0) != 1 )
-			gval(0) = pow( R::qchisq(0.975, (double)nc, 1, 0), 0.5 );
-		if( cop(0) == 1 && R_IsNA(center(0)) ){
+		if( R_IsNA( gval ) && cop == 1 )
+			gval = pow( R::qchisq(0.95, (double)nc, 1, 0), 0.5 );
+		if( R_IsNA( gval ) && cop != 1 )
+			gval = pow( R::qchisq(0.975, (double)nc, 1, 0), 0.5 );
+		if( cop == 1 && R_IsNA(center(0)) ){
 			if( nc == 2 ){
 				NumericVector tempd( nv );
 				for( int i = 0; i < nv; i++ ){
@@ -1378,12 +1054,11 @@ IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center
 				}
 			}
 		}
-		if( cop(0) == 3 && R_IsNA(center(0)) ){
+		if( cop == 3 && R_IsNA(center(0)) ){
 			center = Rcpp::as<Rcpp::NumericMatrix>(wrap(arma::median( m )))(0,_);
 		}
-		if( cop(0) == 6 && R_IsNA(center(0)) ){
-			center = rmba( Rcpp::as<Rcpp::NumericMatrix>(wrap( m )), 
-						   Rcpp::as<Rcpp::IntegerVector>(wrap(5)))(0);
+		if( cop == 6 && R_IsNA(center(0)) ){
+			center = rmba( m , 5)(0);
 		}
 		NumericMatrix m2 = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) );
 		NumericVector B(nc), A(nc), BB(nc), temp(nc), temp_idealf(2);
@@ -1401,10 +1076,10 @@ IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center
 				}
 				temp_idealf=idealf(dis);
 				double cu;
-				if( !mm(0) )
-					cu = median( dis ) + gval( 0 )*( temp_idealf( 1 ) - temp_idealf( 0 ) );
-				else if( mm(0) )
-					cu = median( dis ) + gval( 0 )*mad( dis );
+				if( !mm )
+					cu = median( dis ) + gval*( temp_idealf( 1 ) - temp_idealf( 0 ) );
+				else 
+					cu = median( dis ) + gval*mad( dis );
 				for( int k=0; k < nv; k++ ){
 					if( dis(k) > cu )
 						flag(k) = true;
@@ -1419,57 +1094,82 @@ IntegerVector outpro_C(NumericMatrix M, NumericVector gval, NumericVector center
 	return(wrap(keepid));
 }
 
+arma::uvec outpro_C(arma::mat m, NumericVector center, bool mm, 
+	                   int cop, double tr, double q, double gval=NA_REAL){
 
-RcppExport SEXP skip(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP TR, SEXP Q){
-	NumericMatrix m(M);
-	NumericVector gval(1, NA_REAL), center(m.ncol(), NA_REAL);
-	NumericVector tr(TR), q(Q);
-	LogicalVector mm(MM);
-	IntegerVector outpro_cop(OUTPRO_COP);
-	IntegerVector keepid = outpro_C(m, gval, center, mm, outpro_cop, tr, q);
-	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
-	return(wrap(val));
-}
-
-
-NumericVector skip(NumericMatrix m, LogicalVector mm, IntegerVector outpro_cop, NumericVector tr, NumericVector q){
-	NumericVector gval(1, NA_REAL), center(m.ncol(), NA_REAL);
-	IntegerVector keepid = outpro_C(m, gval, center, mm, outpro_cop, tr, q);
-	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
-	return(wrap(val));
-}
-
-NumericVector skip(arma::mat M, LogicalVector mm, IntegerVector outpro_cop, NumericVector tr, NumericVector q){
-	NumericMatrix m = Rcpp::as<Rcpp::NumericMatrix>(wrap(M));
-	NumericVector gval(1, NA_REAL), center(m.ncol(), NA_REAL);
-	IntegerVector keepid = outpro_C(m, gval, center, mm, outpro_cop, tr, q);
-	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
-	return(wrap(val));
-}
-
-RcppExport SEXP skip_boot(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP BOOTID){
-	BEGIN_RCPP
-	arma::mat m = Rcpp::as<arma::mat>(wrap(M));
-	IntegerVector outpro_cop(OUTPRO_COP);
-	List bootid(BOOTID);
-	LogicalVector mm(MM);
-	int n = m.n_rows, nc = m.n_cols, nboot = bootid.size();
-	NumericVector gval(1, NA_REAL), center(nc, NA_REAL), q(1, 0.5), tr(1, 0.2);
-	NumericVector output(nboot*nc), temp(nc) ;
-	arma::uvec tempid=uvec(n);
-	for( int i = 0; i < nboot; i++ ){
-		R_CheckUserInterrupt();
-		tempid = Rcpp::as<arma::uvec>(bootid(i));
-		temp = skip( m.rows(tempid), mm, outpro_cop, tr, q );
-		for( int j = 0; j < nc; j++ ){
-			output(i*nc + j) = temp(j);
+	int nv = m.n_rows, nc = m.n_cols;
+	arma::uvec flag = zeros<uvec>( nv );
+	arma::uvec keepid;
+	if(nc == 1){
+		double Med = median( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
+		double Mad = mad ( Rcpp::as<Rcpp::NumericVector>(wrap(m)) );
+		NumericVector dis( nv );
+		double crit = pow( R::qchisq( 0.975, 1, 1, 0 ), 0.5 );
+		for( int i = 0; i < nv; i++ ){
+			dis(i) = ( m(i, 0) - Med )*( m(i, 0) - Med )/( Mad*Mad );
+			dis(i) = pow( dis(i), 0.5);
+			if( dis(i) > crit ){
+				flag( i ) = 1;
+			}
 		}
 	}
-	return(wrap(output));
-	END_RCPP
+	if( nc > 1 ){
+		if( R_IsNA( gval ) && cop == 1 )
+			gval = pow( R::qchisq(0.95, (double)nc, 1, 0), 0.5 );
+		if( R_IsNA( gval ) && cop != 1 )
+			gval = pow( R::qchisq(0.975, (double)nc, 1, 0), 0.5 );
+		if( cop == 1 && R_IsNA(center(0)) ){
+			if( nc == 2 ){
+				NumericVector tempd( nv );
+				for( int i = 0; i < nv; i++ ){
+					tempd(i) = depth( m(i, 0), m(i, 1), Rcpp::as<Rcpp::NumericMatrix>(wrap(m)) );
+				}
+				double mdep = *std::max_element( tempd.begin(), tempd.end() );
+				arma::uvec flag = find( Rcpp::as<arma::vec>(tempd) == mdep );
+				if( flag.n_elem == 1 ){
+					center = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) )(flag(0), _);
+				} else if( flag.n_elem > 1 ){
+					center = Rcpp::as<Rcpp::NumericVector>( wrap( mean( m.rows(flag) ) ));
+				}
+			}
+		}
+		if( cop == 3 && R_IsNA(center(0)) ){
+			center = Rcpp::as<Rcpp::NumericMatrix>(wrap(arma::median( m )))(0,_);
+		}
+		if( cop == 6 && R_IsNA(center(0)) ){
+			center = rmba( m , 5)(0);
+		}
+		NumericMatrix m2 = Rcpp::as<Rcpp::NumericMatrix>( wrap(m) );
+		NumericVector B(nc), A(nc), BB(nc), temp(nc), temp_idealf(2);
+		double bot;
+		NumericVector dis(nv);
+		double cu;
+		for( int i=0; i < nv; i++ ){
+			B = m2(i,_) - center;
+			BB = B*B;
+			bot = sum(BB); 
+			if(bot!=0){
+				for( int j = 0; j < nv; j++ ){
+					A = m2(j,_) - center;
+					temp = sum( A * B ) * B / bot;
+					dis(j) = pow(sum( temp * temp ), 0.5);
+				}
+				temp_idealf = idealf(dis);
+				if( !mm ){
+					cu = median( dis ) + gval*( temp_idealf( 1 ) - temp_idealf( 0 ) );
+
+				}else 
+					cu = median( dis ) + gval*mad( dis );
+				for( int k = 0; k < nv; k++ ){
+					if( dis(k) > cu )
+						flag( k ) = 1;
+				}
+			}
+		}		
+	}
+	keepid = find( flag == 0 );
+	return keepid;
 }
-
-
 
 NumericVector winval(NumericVector x, double tr=0.2){
 	NumericVector xcopy = Rcpp::clone(x);
@@ -1494,7 +1194,6 @@ NumericVector winval(NumericVector x, double tr=0.2){
 double winvar(NumericVector x){
 	return arma::as_scalar( arma::var( Rcpp::as<arma::vec>(winval(x)) ) );
 }
-
 
 
 arma::vec near(arma::vec x, double pt, double fr=1.0){
@@ -1523,117 +1222,110 @@ arma::vec near(arma::vec x, double pt, double fr=1.0){
 
 RcppExport SEXP near(SEXP X, SEXP PT){
 	BEGIN_RCPP
-	arma::vec x = Rcpp::as<arma::vec>(wrap(X));
-	double pt = Rcpp::as<double>(wrap(PT));
-	arma::vec output = near(x, pt);
-
-	return(wrap(output));
+	return(wrap(near( Rcpp::as<arma::vec>(wrap(X)), 
+	 				  Rcpp::as<double>(wrap(PT)))));
 	END_RCPP
 }
 
 
-
 double tmean(NumericVector x, double tr=0.2){
 	arma::vec xcopy = Rcpp::as<arma::vec>(x);
-	int n = xcopy.n_elem, lo = floor(n * tr), hi = n - lo - 1;
-	xcopy = arma::sort(xcopy);
+	if( tr > 0.5 )
+		throw std::runtime_error("tr cannot exceed 0.5");
+	else if( tr < 0.0)
+		throw std::runtime_error("tr cannot be negative");
+	else if( tr == 0.5)
+		return median(x);
+	else {
+		int n = xcopy.n_elem, lo = floor(n * tr), hi = n - lo - 1;
+		xcopy = arma::sort(xcopy);
+		return arma::as_scalar(arma::mean(xcopy.subvec( span(lo, hi) )));
+	}
+}
+
+
+double tmean(arma::vec x, double tr=0.2){
+	int n = x.n_elem, lo = floor(n * tr), hi = n - lo - 1;
+	arma::vec xcopy = arma::sort( x );
 	return arma::as_scalar(arma::mean(xcopy.subvec( span(lo, hi) )));
 }
 
 RcppExport SEXP tmean(SEXP X, SEXP TR){
 	BEGIN_RCPP
-	NumericVector x(X), tr(TR);
-	double output;
-	output  = tmean(x, tr(0));
-	return(wrap(output));
+	return(wrap(tmean(Rcpp::as<arma::vec>(wrap(X)), Rcpp::as<double>(wrap(TR)))));
 	END_RCPP
 }
 
-double tmean(arma::vec x, double tr=0.2){
-	arma::vec xcopy(x);
-	int n = xcopy.n_elem, lo = floor(n * tr), hi = n - lo - 1;
-	xcopy = arma::sort(xcopy);
-	return arma::as_scalar(arma::mean(xcopy.subvec( span(lo, hi) )));
-}
 
-
-List aov2depth(List x1, List x2, int nboot=500, double estimator=1){
-	// 2 by K ANOVA independent groups
-	//
-	//  Main effect Factor A only
-	//
-	//Strategy: Use depth of zero based on estimated
-	//differences for each column  of the K levels of Factor B
-	//That is, testing no main effects for Factor A in 
-	//a manner that takes into account the pattern of the
-	//measures of location rather then simply averaging 
-	//across columns.
+List aov2depth(List x1, List x2, int nboot=500, double estimator=1, double tr=0.2){
 	int J = x1.size();
 	if( J != x2.size() )
 		throw std::runtime_error("x1 and x2 should have same number of groups");
-	IntegerVector n1(J), n2(J);
 	NumericVector est1(J), est2(J);
 	arma::mat difb(nboot +1, J), dif(1, J);
 	difb.zeros();
+	arma::vec tempx1, tempx2;
+	int n1, n2;
 
 	for( int j=0; j < J; j++ ){
 		R_CheckUserInterrupt();
-		NumericVector tempx1 = x1(j), tempx2 = x2(j);
-		n1(j) = tempx1.size();
-		n2(j) = tempx2.size();
+		tempx1 = Rcpp::as<arma::vec>( x1(j) ), tempx2 = Rcpp::as<arma::vec>( x2(j) );
+		n1 = tempx1.n_elem;
+		n2 = tempx2.n_elem;
 		if( estimator == 1){
-			est1(j) = tmean(tempx1);
-			est2(j) = tmean(tempx2);
+			est1(j) = tmean(tempx1, tr);
+			est2(j) = tmean(tempx2, tr);
 		} else if ( estimator == 2){
 			est1(j) = median(tempx1);
 			est2(j) = median(tempx2);
 		} else if ( estimator == 3){
 			est1(j) = mean(tempx1);
 			est2(j) = mean(tempx2);
+		}else if ( estimator == 4){
+			est1(j) = hd_C(tempx1, tr);
+			est2(j) = hd_C(tempx2, tr);
 		}
 		dif(0,j)  = est1(j) - est2(j);
 
-		arma::uvec n1boot(n1(j)), n2boot(n2(j));
-		IntegerVector n1boot2(n1(j)), n2boot2(n2(j));
+		arma::uvec n1boot( n1 ), n2boot( n2 );
+		IntegerVector n1boot2( n1 ), n2boot2( n2 );
 
 		for( int k=0; k < nboot; k++ ){
-			n1boot2 = floor(runif(n1(j), 0, n1(j)));
-			n2boot2 = floor(runif(n2(j), 0, n2(j)));
-			n1boot  = Rcpp::as<arma::uvec>(n1boot2);
-			n2boot  = Rcpp::as<arma::uvec>(n2boot2);
-
-			difb(k, j) = tmean((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
-					     tmean((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
-
+			n1boot2 = floor(runif( n1, 0, n1  ));
+			n2boot2 = floor(runif( n2, 0, n2  ));
+			n1boot  = Rcpp::as<arma::uvec>( n1boot2 );
+			n2boot  = Rcpp::as<arma::uvec>( n2boot2 );
 			if( estimator == 1){
-				difb(k, j) = tmean((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
-						     tmean((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
+				difb(k, j) = tmean( tempx1.elem(n1boot), tr) -
+						     tmean( tempx2.elem(n2boot), tr);
 			} else if ( estimator == 2){
-				difb(k, j) = arma::median((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
-					     	 arma::median((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
+				difb(k, j) = median( tempx1.elem(n1boot)) -
+					     	 median( tempx2.elem(n2boot));
 			} else if ( estimator == 3){
-				difb(k, j) = arma::mean((Rcpp::as<arma::vec>(tempx1)).elem(n1boot)) -
-					     	 arma::mean((Rcpp::as<arma::vec>(tempx2)).elem(n2boot));
+				difb(k, j) = mean( tempx1.elem(n1boot)) -
+					     	 mean( tempx2.elem(n2boot));
+			} else if ( estimator == 4){
+				difb(k, j) = hd_C( tempx1.elem(n1boot), tr) -
+					     	 hd_C( tempx2.elem(n2boot), tr);
 			}
 		}
 	}
-	arma::mat m1 = arma::cov(difb.submat(0, 0, nboot-2, J-1));
-	arma::mat dis = mahalanobis(difb, dif.t(), m1);
+	arma::mat m1 = arma::cov( difb.submat(0, 0, nboot-2, J-1) );
+	arma::mat dis = mahalanobis( difb, dif.t(), m1 );
 	int bplus = nboot + 1;
 	arma::uvec sig_vec = find( dis.col(0) >= dis(bplus-1, 0) );
 	double sig = sig_vec.n_elem*1.0/(1.0*bplus);
-	return List::create(_["pvalue"] = sig, 
-						_["est1"] 	= est1, 
-						_["est2"] 	= est2,
-						_["dif"] 	= dif,
-						_["n1"] 	= n1,
-						_["n2"] 	= n2);
+	return List::create( _["pvalue"] = sig, 
+						 _["est1"] 	= est1, 
+						 _["est2"] 	= est2,
+						 _["dif"] 	= dif,
+						 _["n1"] 	= n1,
+						 _["n2"] 	= n2);
 }
 
 
 List ancGLOB_sub3_C(arma::mat x1, arma::vec y1, arma::mat x2, arma::vec y2, bool xout, SEXP PTS,
-					int nmin, int nboot, double fr1, double fr2, int estimator){
-	NumericVector pts;
+					int nmin, int nboot, double fr1, double fr2, int estimator, double tr=0.2){
 	List g1, g2;
 	IntegerVector n3;
 	if(xout){
@@ -1642,13 +1334,13 @@ List ancGLOB_sub3_C(arma::mat x1, arma::vec y1, arma::mat x2, arma::vec y2, bool
 		arma::vec tempy1 = y1;
 		arma::vec tempy2 = y2;
 		
-		NumericVector gval(1, NA_REAL), center(tempx1.n_cols, NA_REAL), tr(1, 0.2), q(1, 0.5);
+		NumericVector center(tempx1.n_cols, NA_REAL);
+		double gval = NA_REAL; 
 		LogicalVector mm(1, FALSE);
-		IntegerVector outpro_cop(1, 3);
 		IntegerVector keepid1 = outpro_C(Rcpp::as<Rcpp::NumericMatrix>(wrap(tempx1)), 
-										 gval, center, mm, outpro_cop, tr, q);
+										 center, mm, 3, 0.2, 0.5, gval);
 		IntegerVector keepid2 = outpro_C(Rcpp::as<Rcpp::NumericMatrix>(wrap(tempx2)), 
-										 gval, center, mm, outpro_cop, tr, q);
+										 center, mm, 3, 0.2, 0.5, gval);
 		x1 = tempx1.rows(Rcpp::as<arma::uvec>(keepid1));
 		y1 = tempy1(Rcpp::as<arma::uvec>(keepid1));
 		x2 = tempx2.rows(Rcpp::as<arma::uvec>(keepid2));
@@ -1660,55 +1352,57 @@ List ancGLOB_sub3_C(arma::mat x1, arma::vec y1, arma::mat x2, arma::vec y2, bool
 		arma::uvec xorder1 = sort_index( x1.col(0) ), isub(5);
 		x1 = x1.rows(xorder1);
 		y1 = y1.elem(xorder1);
-		arma::uvec xorder2 = sort_index( x2.col(0) );
-		x2 = x2.rows(xorder2);
-		y2 = y2.elem(xorder2);
-		arma::uvec n1(N1), n2(N1), vecn(N1);
+		xorder1 = sort_index( x2.col(0) );
+		x2 = x2.rows(xorder1);
+		y2 = y2.elem(xorder1);
 		arma::uvec tempid1, tempid2;
-		IntegerVector sub;
+		std::vector<int> n1n2( 2 );
+		std::vector<int> sub;
+		int vecn;
 		for( int i=0; i < N1; i++){
 			tempid1 = find( near(x1.col(0), x1(i,0), fr1) == 1 );
 			tempid2 = find( near(x2.col(0), x1(i,0), fr2) == 1 );
-			n1(i) = tempid1.n_elem;
-			n2(i) = tempid2.n_elem;
-			if ( n1(i) < n2(i) ) 
-				vecn(i) = n1(i);
-			else 
-				vecn(i) = n2(i);
-			if ( vecn(i) >= nmin ){
+			n1n2[ 0 ] = tempid1.n_elem;
+			n1n2[ 1 ] = tempid2.n_elem;
+			vecn = *std::min_element( n1n2.begin(), n1n2.end() );
+			if ( vecn >= nmin ){
 				sub.push_back(i);
-
 			}
 		}
-		isub(0) = min(sub);
-		isub(4) = max(sub);
-		isub(2) = floor((isub(0) + isub(4))/2);
-		isub(1) = floor((isub(0) + isub(2))/2);
-		isub(3) = floor((isub(2) + isub(4))/2);
+		if(sub.size() > 0){
+			std::vector<double> pts;
+			isub(0) = *std::min_element( sub.begin(), sub.end() );
+			isub(4) = *std::max_element( sub.begin(), sub.end() );
+			isub(2) = floor((isub(0) + isub(4))/2);
+			isub(1) = floor((isub(0) + isub(2))/2);
+			isub(3) = floor((isub(2) + isub(4))/2);
 
-		for( int i=0; i < 5 && sub.size() > 0; i++ ){
-			pts.push_back( arma::as_scalar(x1(isub(i), 0)) );
-			arma::vec tempy1 = y1.elem( find(near(x1.col(0), pts(i), fr1) == 1) );
-			arma::vec tempy2 = y2.elem( find(near(x2.col(0), pts(i), fr2) == 1) );
-			g1.push_back(  tempy1 );
-			g2.push_back(  tempy2 );
-			n3.push_back(tempy1.n_elem);
+			for( int i=0; i < 5; i++ ){
+				pts.push_back( arma::as_scalar(x1(isub(i), 0)) );
+				arma::vec tempy1 = y1.elem( find(near(x1.col(0), pts[i], fr1) == 1) );
+				arma::vec tempy2 = y2.elem( find(near(x2.col(0), pts[i], fr2) == 1) );
+				g1.push_back(  tempy1 );
+				g2.push_back(  tempy2 );
+				n3.push_back(tempy1.n_elem);
+			}
 		}
 	}else{
-		pts = Rcpp::as<Rcpp::NumericVector>(PTS);
+		NumericVector pts(PTS);
 		if(pts.size() < 2) 
 			throw std::runtime_error("Should have at least two points (use the R function ancova)");
 		for( int i=0; i < pts.size(); i++ ){
-			arma::vec tempy1 = y1.elem( find(near(x1.row(0), pts(i), fr1) == 1) ); 
-			arma::vec tempy2 = y2.elem( find(near(x2.row(0), pts(i), fr2) == 1) );
+			arma::vec tempy1 = y1.elem( find(near(x1.col(0), pts(i), fr1) == 1) ); 
+			arma::vec tempy2 = y2.elem( find(near(x2.col(0), pts(i), fr2) == 1) );
+			//Rprintf("pts: \n", pts(i));
 			g1.push_back(  tempy1 );
 			g2.push_back(  tempy2 );
 			n3.push_back(tempy1.n_elem);
 		}
 	}
+
 	List output;
 	if( g1.size() > 0){
-		output = aov2depth(g1, g2, nboot, estimator);
+		output = aov2depth(g1, g2, nboot, estimator, tr);
 	} else {
 		output.push_back(NA_REAL);
 	}
@@ -1717,7 +1411,8 @@ List ancGLOB_sub3_C(arma::mat x1, arma::vec y1, arma::mat x2, arma::vec y2, bool
 
 
 
-RcppExport SEXP ancGLOB_sub2_C(SEXP BVEC, SEXP N1, SEXP N2, SEXP FR1, SEXP FR2, SEXP PTS, SEXP EST){
+
+RcppExport SEXP ancGLOB_sub2_C(SEXP BVEC, SEXP N1, SEXP N2, SEXP FR1, SEXP FR2, SEXP PTS, SEXP EST, SEXP TR, SEXP NBOOT){
 	BEGIN_RCPP
 	List bvec(BVEC);
 	int niter = bvec.size(), n1 = Rcpp::as<int>(wrap(N1)), n2 = Rcpp::as<int>(wrap(N2));
@@ -1729,11 +1424,11 @@ RcppExport SEXP ancGLOB_sub2_C(SEXP BVEC, SEXP N1, SEXP N2, SEXP FR1, SEXP FR2, 
 		ng1 = n1;
 		ng2 = n2;
 	}
-	double fr1 = Rcpp::as<double>(wrap(FR1)), fr2 = Rcpp::as<double>(wrap(FR2));
+	double fr1 = Rcpp::as<double>(wrap(FR1)), fr2 = Rcpp::as<double>(wrap(FR2)), tr = Rcpp::as<double>(wrap(TR));
 	arma::vec y1(ng1), y2(ng2);
 	arma::mat x1(ng1, 1), x2(ng2, 1);
-	bool xout=FALSE;
-	int nmin = 12, nboot=500;
+	bool xout = FALSE;
+	int nmin = 12, nboot = Rcpp::as<int>( wrap(NBOOT) );
 	arma::vec temp(n1*2+n2*2), pval(niter);
 	List templist;
 	for( int i = 0; i < niter; i++ ){
@@ -1746,10 +1441,586 @@ RcppExport SEXP ancGLOB_sub2_C(SEXP BVEC, SEXP N1, SEXP N2, SEXP FR1, SEXP FR2, 
 			x2(j, 0) = temp(j + ng1*2);
 		 	y2(j) = temp(j + ng1*2 + ng2);
 		}
-		templist = ancGLOB_sub3_C(x1, y1, x2, y2, xout, PTS, nmin, nboot, fr1, fr2, estimator);
+		templist = ancGLOB_sub3_C(x1, y1, x2, y2, xout, PTS, nmin, nboot, fr1, fr2, estimator, tr);
 		pval(i) = Rcpp::as<double>(templist(0));
 	}
 	return(wrap(pval));
 	END_RCPP
 }
 
+
+IntegerVector outbox_C( NumericVector x, double gval=NA_REAL, bool mbox=false ){
+	NumericVector temp = idealf( x );
+	double cl, cu;
+	int n = x.size();
+	if( mbox ){
+		if( R_IsNA( gval ) )
+			gval = ( 17.63 * n - 23.64 )/( 7.74 * n - 3.71 );
+		cl = median( x ) - gval * ( temp( 1 ) - temp( 0 ) );
+		cu = median( x ) + gval * ( temp( 1 ) - temp( 0 ) );
+	} else {
+		if( R_IsNA( gval ) )
+			gval = 1.5;
+		cl = temp( 0 ) - gval * ( temp( 1 ) - temp( 0 ) );
+		cu = temp( 1 ) + gval * ( temp( 1 ) - temp( 0 ) );
+	}
+	std::vector<int> outid;
+
+	for( int i = 0; i < n; i++ ){
+		if( x(i) > cu || x(i) < cl  )
+			outid.push_back( i );
+	}
+	return Rcpp::as<Rcpp::IntegerVector>( wrap( outid ) );
+}
+
+RcppExport SEXP outbox_C( SEXP X, SEXP GVAL, SEXP MBOX ){
+	BEGIN_RCPP
+	return outbox_C( Rcpp::as<NumericVector>( wrap(X) ),
+					 Rcpp::as<double>( wrap(GVAL) ),
+					 Rcpp::as<bool>( wrap(MBOX) ));
+
+	END_RCPP
+}
+
+
+
+NumericVector skip(NumericMatrix m, bool mm, int outpro_cop, double tr, double q){
+	NumericVector center(m.ncol(), NA_REAL);
+	IntegerVector keepid = outpro_C(m, center, mm, outpro_cop, tr, q);
+	arma::mat val = arma::mean((Rcpp::as<arma::mat>(m)).rows(Rcpp::as<arma::uvec>(keepid)));
+	return(wrap(val));
+}
+
+NumericVector skip(arma::mat m, bool mm, int outpro_cop, double tr, double q){
+	NumericVector center(m.n_cols, NA_REAL);
+	arma::uvec keepid = outpro_C(m, center, mm, outpro_cop, tr, q);
+	arma::mat val = arma::mean( m.rows( keepid ) );
+	return(wrap(val));
+}
+
+
+RcppExport SEXP skip(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP TR, SEXP Q){
+	BEGIN_RCPP
+	return skip( Rcpp::as<Rcpp::NumericMatrix>( wrap( M )),
+				 Rcpp::as<bool>( wrap( MM ) ),
+				 Rcpp::as<int>( wrap(OUTPRO_COP) ),
+				 Rcpp::as<double>( wrap(TR) ),
+				 Rcpp::as<double>( wrap(Q) )); 
+	END_RCPP
+}
+
+RcppExport SEXP skip_boot(SEXP M, SEXP MM, SEXP OUTPRO_COP, SEXP BOOTID){
+	BEGIN_RCPP
+	
+	arma::mat m = Rcpp::as<arma::mat>( wrap(M) );
+	int outpro_cop = Rcpp::as<int>( wrap(OUTPRO_COP) );
+	List bootid( BOOTID );
+	bool mm = Rcpp::as<bool>( wrap( MM ) );
+	int n = m.n_rows, nc = m.n_cols, nboot = bootid.size();
+	NumericVector center(nc, NA_REAL);
+	double q = 0.5, tr = 0.2;
+	NumericVector output( nboot * nc ), temp( nc );
+	arma::uvec tempid = uvec( n );
+	
+	for( int i = 0; i < nboot; i++ ){
+		R_CheckUserInterrupt();
+		temp = skip( m.rows( Rcpp::as<arma::uvec>( bootid(i) ) ), mm, outpro_cop, tr, q );
+		for( int j = 0; j < nc; j++ ){
+			output( i * nc + j) = temp(j);
+		}
+	}
+	return output;
+	END_RCPP
+}
+
+
+/* ---------------------------------------------------------------------------------------------
+The code below is taken from the R package MASS
+*/
+
+static double *coef, *qraux, *work, *res, *yr, *xr, *means, *d2, *d2copy;
+static int *pivot, *which, *which2;
+static int *ind;
+
+
+
+/*
+   Sampling k from 0:n-1 without replacement.
+ */
+static void sample_noreplace(int *x, int n, int k){
+    int i, j, nn=n;
+
+    for (i = 0; i < n; i++) ind[i] = i;
+    for (i = 0; i < k; i++) {
+	j = (int)(nn * unif_rand());
+	x[i] = ind[j];
+	ind[j] = ind[--nn];
+    }
+}
+
+/*
+   Find all subsets of size k in order: this gets a new one each call
+ */
+static void next_set(int *x, int n, int k){
+    int i, j, tmp;
+
+    j = k - 1;
+    tmp = x[j]++;
+    while(j > 0 && x[j] >= n - (k - 1 -j)) tmp = ++x[--j];
+    for(i = j+1; i < k; i++)  x[i] =  ++tmp;
+}
+
+
+
+static void mve_setup(int *n, int *p, int *ps) {
+    xr = (double *) R_alloc((*ps)*(*p), sizeof(double));
+    qraux = (double *) R_alloc(*p, sizeof(double));
+    pivot = (int *) R_alloc(*p, sizeof(int));
+    work = (double *) R_alloc(2*(*p), sizeof(double));
+    d2 = (double *) R_alloc(*n, sizeof(double));
+    d2copy = (double *) R_alloc(*n, sizeof(double));
+    means = (double *) R_alloc((*p), sizeof(double));
+    ind = (int *) R_alloc(*n, sizeof(int));
+    which = (int *) R_alloc(*ps, sizeof(int));
+    which2 = (int *) R_alloc(*ps, sizeof(int));
+}
+
+
+/* find the squared Mahalanobis distance to x via QR decomposition in xr. */
+static double mah(double *xr, int nnew, int p, double *x){
+    int i, j;
+    double s, ss = 0.0;
+
+    for(j = 0; j < p; j++) {
+	s = x[j];
+	if(j > 0) for(i = 0; i < j; i++) s -= work[i] * xr[i + nnew*j];
+	work[j] = s / xr[j + nnew*j];
+	ss += work[j] * work[j];
+    }
+    return(ss*(nnew-1));
+}
+
+/*
+   Compute the squared Mahalanobis distances, in d2, to all points in x
+   from the mean of the subset in which using the covariance of that
+   subset.
+*/
+static int do_one(double *x, int *which, int n, int nnew, int p, double *det, double *d2){
+    int i, j, k;
+    int rank;
+    double sum, tol = 1.0e-7;
+
+    for(j = 0; j < nnew; j++)
+	for(k = 0; k < p; k++) xr[j + nnew*k] = x[which[j] + n*k];
+    for(k = 0; k < p; k++) {
+	sum = 0.0;
+	for(j = 0; j < nnew; j++) sum += xr[j + nnew*k];
+	sum /= nnew;
+	means[k] = sum;
+	for(j = 0; j < nnew; j++) xr[j + nnew*k] -= sum;
+    }
+
+    F77_CALL(dqrdc2)(xr, &nnew, &nnew, &p, &tol, &rank, qraux, pivot, work);
+    if(rank < p) return(1);
+
+    sum = 0.0;
+    for(k = 0; k < p; k++)
+	sum += log(fabs(xr[k + nnew*k]));
+    *det = sum;
+
+    /* now solve R^T b = (x[i, ] - means) and find squared length of b */
+    for(i = 0; i < n; i++) {
+	for(j = 0; j < p; j++) qraux[j] = x[i + n*j] - means[j];
+	d2[i] = mah(xr, nnew, p, qraux);
+    }
+    return(0);
+}
+
+
+void mve_fitlots(double *x, int *n, int *p, int *qn, int *mcd,
+	    		 int *sample, int *nwhich, int *ntrials,
+	    		 double *crit, int *sing, int *bestone) {
+    int i, iter, j, nn = *n, quan = *qn, trial, this_sing;
+    int nnew = *nwhich;
+    double det, best = BIG, thiscrit, lim;
+
+    if(*mcd != 1)
+	mve_setup(n, p, nwhich);
+    else
+	mve_setup(n, p, n); /* could get ties */
+
+    *sing = 0;
+    if(!*sample) {
+	for(i = 0; i < nnew; i++) which[i] = i;
+    } else GetRNGstate();
+
+    thiscrit = 0.0;		/* -Wall */
+
+    for(trial = 0; trial < *ntrials; trial++) {
+
+	R_CheckUserInterrupt();
+
+	if(!(*sample)) {if(trial > 0) next_set(which, nn, nnew);}
+	else sample_noreplace(which, nn, nnew);
+
+	/* for(i = 0; i < nnew; i++) printf("%d ", which[i]); printf("\n");
+	   fflush(stdout);*/
+
+
+	/* Find the mean and covariance matrix of the sample. Check if singular.
+	   Compute Mahalanobis distances of all points to the means using
+	   this covariance matrix V, and find quantile largest. Volume is
+	   then monotone in determinant(V * dist2). */
+
+	this_sing = do_one(x, which, nn, nnew, *p, &det, d2);
+	if(this_sing)  {(*sing)++; continue;}
+
+	/*for(i = 0; i < nnew; i++) printf(" %d", which[i]); printf("\n");*/
+
+	for(i = 0; i < nn; i++) d2copy[i] = d2[i];
+	rPsort(d2copy, nn, quan-1);
+	lim = d2copy[*qn-1];
+	if(!*mcd) thiscrit = (*p) * log(lim) + 2*det;
+	else {
+	    for(iter = 0; iter < 4; iter++) {
+		/*for(i = 0; i < nn; i++) printf(" %f", d2[i]); printf("\n");*/
+		if(iter > 0) {
+		    for(i = 0; i < nn; i++) d2copy[i] = d2[i];
+		    rPsort(d2copy, nn, quan-1);
+		    lim = d2copy[*qn-1];
+		}
+		j = 0;
+		for(i = 0; i < nn; i++)
+		    if(d2[i] <= lim) which2[j++] = i;
+		/* note: we take all points that meet this limit:
+		   there could be more than quan. */
+		(void) do_one(x, which2, nn, quan, *p, &det, d2);
+		if(iter > 0 && 2 * det >= 0.999*thiscrit) break;
+		thiscrit = 2 * det;
+		/* printf("iter %d %f", iter, thiscrit);
+		   for(i = 0; i < quan; i++) printf(" %d", which2[i]);
+		   printf("\n"); fflush(stdout);*/
+	    }
+
+	}
+	/*   printf("this %f\n", thiscrit);*/
+
+
+	if(thiscrit < best) { /* warning: first might be singular */
+	    best = thiscrit;
+	    for(i = 0; i < nn; i++) bestone[i] = (d2[i] <= lim);
+	}
+    }
+    *crit = best;
+    if(*sample) PutRNGstate();
+    /* mve_free(); */
+}
+
+/* The code above is taken from the R package MASS
+  -----------------------------------------------------------------------------------------
+*/ 
+
+
+/*NumericVector quantile( NumericVector x, int type = 7 ){
+	int n = x.size();
+	NumericVector probs = NumericVector::create( 0, 0.25, 0.5, 0.75, 1.0 );
+	NumericVector qs(5, NA_REAL);
+	
+	if( n > 0 ){
+		NumericVector index = (n - 1) * probs;
+		NumericVector lo = floor( index );
+		NumericVector hi = ceiling( index );
+		arma::vec xsort = arma::sort( Rcpp::as<arma::vec>( x ) );
+		//std::vector<int> i;
+		for( int i = 0; i < 5; i++ ){
+			if( index(i) > lo(i) )
+				qs( i ) = ( 1.0 - index( i ) + lo( i ) ) * xsort( (int)lo(i) ) + 
+						  ( index( i ) - lo( i ) ) * xsort( (int)hi(i) ) ;
+			else 
+				qs( i ) = xsort( (int)lo(i) ) ;
+		}
+	} 
+	return qs;
+}
+*/
+
+NumericVector quantile( NumericVector x, double probs = NA_REAL, int type=7 ){
+	int n = x.size();
+	NumericVector prob;
+	if( R_IsNA(probs) )
+		prob = NumericVector::create( 0, 0.25, 0.5, 0.75, 1.0 );
+	else 
+		prob.push_back( probs );
+	int n_prob = prob.size();
+	NumericVector qs(n_prob, NA_REAL);
+	
+	if( n > 0 ){
+		NumericVector index = (n - 1) * prob;
+		NumericVector lo = floor( index );
+		NumericVector hi = ceiling( index );
+		arma::vec xsort = arma::sort( Rcpp::as<arma::vec>( x ) );
+		//std::vector<int> i;
+		for( int i = 0; i < n_prob; i++ ){
+			if( index(i) > lo(i) )
+				qs( i ) = ( 1.0 - index( i ) + lo( i ) ) * xsort( (int)lo(i) ) + 
+						  ( index( i ) - lo( i ) ) * xsort( (int)hi(i) ) ;
+			else 
+				qs( i ) = xsort( (int)lo(i) ) ;
+		}
+	} 
+	return qs;
+}
+
+
+
+double IQR( NumericVector x ){
+	NumericVector qt = quantile( x );
+	return qt(3) - qt(1);
+}
+
+
+double IQR( arma::vec x ){
+	NumericVector qt = quantile( Rcpp::as<Rcpp::NumericVector>( wrap( x ) ) );
+	return qt(3) - qt(1);
+}
+
+
+/*
+Below is an incomplete C++ implementation of the R function cov.rob from the package MASS 
+Not all of the functionalities are implemented yet; hence, its imcompleteness.
+*/
+
+
+
+List covrob( arma::mat x, std::string nsamp = "best", std::string method = "mve", bool cor = false, 
+			 double quantileused = NA_REAL ){
+	
+	List ans;
+	int n = x.n_rows, p = x.n_cols;
+	std::stringstream errormsg;
+	IntegerVector sing(1), bestone(n);
+	double crit;
+	arma::mat center, covs;
+
+	if( method != "mve" && method != "mcd" && method != "classical" )
+		throw std::runtime_error( "`method` must be one of `mve`, `mcd`, and `classical`");
+	if( nsamp != "best" && nsamp != "exact" && nsamp != "sample" )
+		throw std::runtime_error( "`nsamp` must be either numerical or one of `exact`, `best`, and `sample`");
+	
+	if( n < p + 1 ){
+		errormsg << "at least " << p + 1 << " are needed.";
+		throw std::runtime_error( errormsg.str() );
+	}
+
+	if( method == "classical" ){
+		center = arma::mean( x );
+		covs   = arma::cov( x );
+		return List::create( _["center"] = center, _["cov"] = covs, _["n.obs"] = n);
+	} else {	
+		if( R_IsNA( quantileused ) )
+			quantileused = floor(( n + p + 1.0 )/2.0);
+		if( quantileused < p + 1 ){
+			errormsg << "'quantile' must be at least " << p + 1;
+			throw std::runtime_error( errormsg.str() );
+		}
+		if( quantileused > n - 1 ){
+			errormsg << "'quantile' must be at most " << n - 1;
+			throw std::runtime_error( errormsg.str() );
+		}		
+
+		NumericVector divisor( p );
+		for( int i = 0; i < p; i++ ){
+			divisor( i ) = IQR( x.col(i) );
+			if( divisor( i ) == 0 )
+				throw std::runtime_error("at least one column has an IQR of 0");  
+		    for( int j = 0; j < n; j++ )
+		    	x(j, i) = x( j, i )/divisor( i );
+		}
+
+		int qn = (int)quantileused, nsampint; 
+		int ps = p + 1;
+		double nexact = R::choose( (double)n, (double)ps );
+		
+		if( nsamp == "best" ) nsamp = nexact < 5000.0 ? "exact" : "sample";
+		
+		int  samp = nsamp != "exact" ? 1 : 0;
+		if( samp == 1 ) {
+			if( nsamp == "sample")
+				nsampint = 500 * ps < 3000 ? 500 * ps : 3000;
+		} else 
+			nsampint = (int)nexact;
+
+	 	int methodint = method == "mcd" ? 1 : 0;
+	 	mve_fitlots( x.begin(), &n, &p, &qn, &methodint, &samp, &ps, 
+	 				 &nsampint, &crit, sing.begin(), bestone.begin());
+	 	
+	 	crit = crit + 2 * sum( log(divisor) ) + ( method == "mcd" ? - p * log( qn - 1) : 0.0);
+
+	 	arma::uvec best = find( (Rcpp::as<arma::uvec>(bestone)) == 1 );
+	 	arma::mat means = arma::mean( x.rows( best ) );
+		arma::mat rcov  = arma::cov( x.rows( best ) ) * pow( 1.0 + 15.0/(n - p), 2.0 );
+	 	arma::vec dist = mahalanobis( x, means.t(), rcov ) ;
+	 	NumericVector cut = R::qchisq( 0.975, (double)p, 1, 0 ) / 
+	 	                    (R::qchisq( (double)qn/((double)n), (double)p,  1, 0) ) *
+	 				        quantile( (Rcpp::as<Rcpp::NumericVector>( wrap(dist) )), (double)qn/((double)n) );
+	 	center = arma::mean(  x.rows( find( dist < cut(0) ) ) );		
+	 	covs = arma::cov( x.rows( find( dist < cut(0) ) ) ) ;
+	 	for( int i = 0; i < p; i++ ){
+	 		center(0, i) = center(0, i) * divisor( i );
+	 		for( int j = 0; j < p; j++ ){
+	 			covs( j, i ) = covs( j, i ) * divisor( i ) * divisor( j );
+	 		}
+	 	}
+	 	
+	 	if( cor ){
+	 		arma::vec SD = sqrt( covs.diag() );
+	 		arma::mat cors = arma::mat( p, p );
+
+	 		for( int i = 0; i < p; i++ ){
+	 			for( int j = 0; j < p; j++ ){
+	 				cors( j, i ) = covs( j, i ) / SD( i ) / SD( j );
+	 			}
+	 		}
+	 		return List::create( _["center"] = center,
+	 							 _["cov"] = covs,
+	 							 _["msg"] = sing,
+	 							 _["crit"] = crit, 
+	 							 _["best"] = best,
+	 							 _["n.obs"] = n,
+	 							 _["cor"] = cors);
+	 	}
+ 		return List::create( _["center"] = center,
+	 						 _["cov"] = covs,
+	 						 _["msg"] = sing,
+	 						 _["crit"] = crit, 
+	 						 _["best"] = best,
+	 						 _["n.obs"] = n);
+	}
+}
+
+
+
+List covrob( arma::mat x, int nsampint, std::string method = "mve", 
+			 bool cor = false, double quantileused = NA_REAL ){	
+	List ans;
+	int n = x.n_rows, p = x.n_cols;
+	std::stringstream errormsg;
+	IntegerVector sing(1), bestone(n);
+	double crit;
+	arma::mat center, covs;
+	std::string nsamp;
+
+	if( method != "mve" && method != "mcd" && method != "classical" )
+		throw std::runtime_error( "`method` must be one of `mve`, `mcd`, and `classical`");
+
+	if( n < p + 1 ){
+		errormsg << "at least " << p + 1 << " are needed.";
+		throw std::runtime_error( errormsg.str() );
+	}
+
+	if( method == "classical" ){
+		center = arma::mean( x );
+		covs   = arma::cov( x );
+		return List::create( _["center"] = center, _["cov"] = covs, _["n.obs"] = n);
+	} else {	
+		if( R_IsNA( quantileused ) )
+			quantileused = floor(( n + p + 1.0 )/2.0);
+		if( quantileused < p + 1 ){
+			errormsg << "'quantile' must be at least " << p + 1;
+			throw std::runtime_error( errormsg.str() );
+		}
+		if( quantileused > n - 1 ){
+			errormsg << "'quantile' must be at most " << n - 1;
+			throw std::runtime_error( errormsg.str() );
+		}		
+
+		NumericVector divisor( p );
+		for( int i = 0; i < p; i++ ){
+			divisor( i ) = IQR( x.col(i) );
+			if( divisor( i ) == 0 )
+				throw std::runtime_error("at least one column has an IQR of 0");  
+		    for( int j = 0; j < n; j++ )
+		    	x(j, i) = x( j, i )/divisor( i );
+		}
+
+		int qn = (int)quantileused, nsampint; 
+		int ps = p + 1;
+		double nexact = R::choose( (double)n, (double)ps );
+		
+		if( nsampint > nexact ) {
+			Rprintf("\nWarning: only %.0lf sets, so all sets will be tried\n", nexact);
+			nsamp = "exact";
+		} else
+			nsamp = "NA";
+
+		int  samp = nsamp != "exact" ? 1 : 0;
+		if( samp == 1 ) {
+			if( nsamp == "sample" )
+				nsampint = 500 * ps < 3000 ? 500 * ps : 3000;
+		} else 
+			nsampint = (int)nexact;
+
+	 	int methodint = method == "mcd" ? 1 : 0;
+	 	mve_fitlots( x.begin(), &n, &p, &qn, &methodint, &samp, &ps, 
+	 				 &nsampint, &crit, sing.begin(), bestone.begin());
+	 	
+	 	crit = crit + 2 * sum( log(divisor) ) + ( method == "mcd" ? - p * log( qn - 1) : 0.0);
+
+	 	arma::uvec best = find( (Rcpp::as<arma::uvec>(bestone)) == 1 );
+	 	arma::mat means = arma::mean( x.rows( best ) );
+		arma::mat rcov  = arma::cov( x.rows( best ) ) * pow( 1.0 + 15.0/(n - p), 2.0 );
+	 	arma::vec dist = mahalanobis( x, means.t(), rcov ) ;
+	 	NumericVector cut = R::qchisq( 0.975, (double)p, 1, 0 ) / 
+	 	                    (R::qchisq( (double)qn/((double)n), (double)p,  1, 0) ) *
+	 				        quantile( (Rcpp::as<Rcpp::NumericVector>( wrap(dist) )), (double)qn/((double)n) );
+	 	center = arma::mean(  x.rows( find( dist < cut(0) ) ) );		
+	 	covs = arma::cov( x.rows( find( dist < cut(0) ) ) ) ;
+	 	for( int i = 0; i < p; i++ ){
+	 		center(0, i) = center(0, i) * divisor( i );
+	 		for( int j = 0; j < p; j++ ){
+	 			covs( j, i ) = covs( j, i ) * divisor( i ) * divisor( j );
+	 		}
+	 	}
+	 	
+	 	if( cor ){
+	 		arma::vec SD = sqrt( covs.diag() );
+	 		arma::mat cors = arma::mat( p, p );
+
+	 		for( int i = 0; i < p; i++ ){
+	 			for( int j = 0; j < p; j++ ){
+	 				cors( j, i ) = covs( j, i ) / SD( i ) / SD( j );
+	 			}
+	 		}
+	 		return List::create( _["center"] = center,
+	 							 _["cov"] = covs,
+	 							 _["msg"] = sing,
+	 							 _["crit"] = crit, 
+	 							 _["best"] = best,
+	 							 _["n.obs"] = n,
+	 							 _["cor"] = cors);
+	 	}
+ 		return List::create( _["center"] = center,
+	 						 _["cov"] = covs,
+	 						 _["msg"] = sing,
+	 						 _["crit"] = crit, 
+	 						 _["best"] = best,
+	 						 _["n.obs"] = n);
+	}
+}
+
+
+
+RcppExport SEXP covrob1( SEXP X, SEXP  NSAMP ){
+	BEGIN_RCPP
+	return(wrap(covrob( Rcpp::as<arma::mat>( wrap(X) ),
+						Rcpp::as<std::string>( wrap(NSAMP) ))));
+	END_RCPP
+
+}
+
+RcppExport SEXP covrob2( SEXP X ){
+	BEGIN_RCPP
+	return(wrap(covrob( Rcpp::as<arma::mat>( wrap(X) ))));
+	END_RCPP
+
+}
