@@ -6,3 +6,7 @@ The functions in `robustmethods_CPP.R` are adapted from a subset of robust stati
 ##A Mac binary named `WRScpp` is now available to be installed following the instructions via the link below:
 
 ##https://github.com/mrxiaohe/WRScpp
+
+
+[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/mrxiaohe/robustmethods_cplusplus/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+
