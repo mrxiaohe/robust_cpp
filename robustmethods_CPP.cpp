@@ -15,7 +15,6 @@ using namespace arma;
 //IntegerVector order(NumericVector x);
 
 
-
 IntegerVector order(NumericVector x);
 NumericVector eigenval(arma::mat M);
 double gvar_C(arma::mat M);
@@ -2023,4 +2022,141 @@ RcppExport SEXP covrob2( SEXP X ){
 	return(wrap(covrob( Rcpp::as<arma::mat>( wrap(X) ))));
 	END_RCPP
 
+}
+
+
+
+LogicalVector outpro_for1(NumericMatrix m, NumericVector gval, NumericVector center, bool mm ){
+	int nrows = m.nrow();
+	NumericVector outid, B(m.ncol()), A(m.ncol()), temp(m.ncol()), BB(m.ncol()), temp_idealf(2);
+	LogicalVector flag(nrows, false);
+	arma::vec dis = arma::vec( nrows );
+	double bot;
+
+	double cu;
+	for( int i = 0; i < nrows; i++ ){
+		R_CheckUserInterrupt();
+		B  = m(i,_) - center;
+		BB = B * B;
+		bot = sum(BB); 
+
+		if( bot != 0){
+			for(int j = 0; j < nrows; j++ ){
+				A = m(j,_) - center;
+				temp = sum( A*B)*B/bot;
+				dis(j) = pow( sum( temp * temp ), 0.5 );
+			}
+			temp_idealf = idealf(dis);
+			if( !mm )
+				cu = arma::as_scalar(arma::median( dis )) + gval(0) * ( temp_idealf(1) - temp_idealf(0) );
+			else
+				cu = arma::as_scalar(arma::median( dis )) + 2.0* mad(dis);
+			for( int k = 0; k < nrows; k++ ){
+				if( dis(k) > cu)
+					flag(k)=true;
+			}
+		}
+	}
+	return(wrap(flag));
+}
+
+
+RcppExport SEXP outpro_for1( SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM ){
+	BEGIN_RCPP	
+	return outpro_for1( Rcpp::as<Rcpp::NumericMatrix>(wrap(M)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(GVAL)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(CENTER)),
+					 Rcpp::as<bool>(wrap(MM)));
+	END_RCPP
+}
+
+
+LogicalVector outpro_for2(NumericMatrix m, NumericVector gval, NumericVector center, bool mm ){
+	int nrows = m.nrow();
+	NumericVector outid, B(m.ncol()), A(m.ncol()), temp(m.ncol()), BB(m.ncol()), temp_idealf(2);
+	LogicalVector flag(nrows, false);
+	arma::vec dis = arma::vec( nrows );
+	double bot;
+
+	double cu;
+	for( int i = 0; i < nrows; i++ ){
+		R_CheckUserInterrupt();
+		B  = m(i,_) - center;
+		BB = B * B;
+		bot = sum(BB); 
+
+		if( bot != 0){
+			for(int j = 0; j < nrows; j++ ){
+				A = m(j,_) - center;
+				temp = sum( A*B)*B/bot;
+				dis(j) = pow( sum( temp * temp ), 0.5 );
+			}
+			temp_idealf = idealf(dis);
+			if( !mm )
+				cu = arma::as_scalar(arma::median( dis )) + gval(0) * ( temp_idealf(1) - temp_idealf(0) );
+			else
+				cu = arma::as_scalar(arma::median( dis )) + gval(0);
+			for( int k = 0; k < nrows; k++ ){
+				if( dis(k) > cu)
+					flag(k)=true;
+			}
+		}
+	}
+	return(wrap(flag));
+}
+
+
+RcppExport SEXP outpro_for2( SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM ){
+	BEGIN_RCPP	
+	return outpro_for2( Rcpp::as<Rcpp::NumericMatrix>(wrap(M)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(GVAL)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(CENTER)),
+					 Rcpp::as<bool>(wrap(MM)));
+	END_RCPP
+}
+
+
+
+LogicalVector outpro_for3(NumericMatrix m, NumericVector gval, NumericVector center, bool mm ){
+	int nrows = m.nrow();
+	NumericVector outid, B(m.ncol()), A(m.ncol()), temp(m.ncol()), BB(m.ncol()), temp_idealf(2);
+	LogicalVector flag(nrows, false);
+	arma::vec dis = arma::vec( nrows );
+	double bot;
+
+	double cu;
+	for( int i = 0; i < nrows; i++ ){
+		R_CheckUserInterrupt();
+		B  = m(i,_) - center;
+		BB = B * B;
+		bot = sum(BB); 
+
+		if( bot != 0){
+			for(int j = 0; j < nrows; j++ ){
+				A = m(j,_) - center;
+				temp = sum( A*B)*B/bot;
+				dis(j) = pow( sum( temp * temp ), 0.5 );
+			}
+			temp_idealf = idealf(dis);
+			if( !mm )
+				cu = arma::as_scalar(arma::median( dis )) + gval(0) * ( temp_idealf(1) - temp_idealf(0) );
+			else
+				cu = gval(0);
+			for( int k = 0; k < nrows; k++ ){
+				if( dis(k) > cu)
+					flag(k)=true;
+			}
+		}
+	}
+	return(wrap(flag));
+}
+
+
+RcppExport SEXP outpro_for3( SEXP M, SEXP GVAL, SEXP CENTER, SEXP MM ){
+	BEGIN_RCPP	
+	return outpro_for3( Rcpp::as<Rcpp::NumericMatrix>(wrap(M)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(GVAL)),
+					 Rcpp::as<Rcpp::NumericVector>(wrap(CENTER)),
+					 Rcpp::as<bool>(wrap(MM)));
+	END_RCPP
 }
