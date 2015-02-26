@@ -8,5 +8,7 @@ The functions in `robustmethods_CPP.R` are adapted from a subset of robust stati
 ##https://github.com/mrxiaohe/WRScpp
 
 
-[![Bitdeli Badge](https://d2weczhvl823v0.cloudfront.net/mrxiaohe/robustmethods_cplusplus/trend.png)](https://bitdeli.com/free "Bitdeli Badge")
+##A Windows binary can be found in the link below (However, it hasn't been updated for a while since I don't have a Windows machine to compile the code...)
+
+##https://github.com/mrxiaohe/WRScppWin
 
