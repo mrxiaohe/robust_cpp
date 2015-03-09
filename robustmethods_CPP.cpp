@@ -105,7 +105,6 @@ IntegerVector order(NumericVector x){
 Environment base("package:base");
 Function eigen = base["eigen"]; 
 
-void goal(){}
 
 NumericVector eigenval(arma::mat M) {
     List output = eigen(Rcpp::wrap(M));    
